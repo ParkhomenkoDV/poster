@@ -52,9 +52,8 @@ func main() {
 	fmt.Printf("Найдено %d JSON файлов для отправки\n", len(filePaths))
 
 	// Ограничиваем количество одновременных горутин
-	maxWorkers := 5
-	if len(filePaths) < maxWorkers {
-		maxWorkers = len(filePaths)
+	if len(filePaths) < cfg.Workers {
+		cfg.Workers = len(filePaths)
 	}
 
 	// Каналы для работы
@@ -65,15 +64,15 @@ func main() {
 	client := &http.Client{
 		Timeout: time.Duration(cfg.Timeout) * time.Second,
 		Transport: &http.Transport{
-			MaxIdleConns:        maxWorkers,
-			MaxIdleConnsPerHost: maxWorkers,
+			MaxIdleConns:        cfg.Workers,
+			MaxIdleConnsPerHost: cfg.Workers,
 			IdleConnTimeout:     90 * time.Second,
 		},
 	}
 
 	// Запускаем воркеров
 	var wg sync.WaitGroup
-	for i := 0; i < maxWorkers; i++ {
+	for i := 0; i < cfg.Workers; i++ {
 		wg.Add(1)
 		go work(client, cfg.URL, cfg.ResponsesDir, filesChan, resultsChan, &wg)
 	}
@@ -101,41 +100,6 @@ func main() {
 		}
 	}
 	fmt.Printf("\nОбработка завершена! Успешно: %d, Ошибок: %d\n", successCount, errorCount)
-
-	/*
-		// Обработка каждого файла
-		for _, filePath := range filePaths {
-			fileName := filepath.Base(filePath)
-
-			// Чтение JSON файла
-			jsonData, err := os.ReadFile(filePath)
-			if err != nil {
-				fmt.Printf("Ошибка чтения файла %s: %v\n", fileName, err)
-				continue
-			}
-
-			// Проверка валидности JSON
-			if !json.Valid(jsonData) {
-				fmt.Printf("Файл %s содержит невалидный JSON\n", fileName)
-				continue
-			}
-
-			// Отправка запроса на сервер
-			response, err := sendRequest(client, cfg.URL, jsonData)
-			if err != nil {
-				fmt.Printf("Ошибка отправки запроса: %v\n", err)
-				continue
-			}
-
-			// Сохранение ответа
-			if err := saveResponse(fileName, response, cfg.ResponsesDir); err != nil {
-				fmt.Printf("Ошибка сохранения ответа: %v\n", err)
-				continue
-			}
-		}
-
-		fmt.Println("Обработка завершена!")
-	*/
 }
 
 // work обрабатывает файлы из канала
@@ -176,8 +140,7 @@ func work(client *http.Client, url, responsesDir string,
 	}
 }
 
-/*
-// sendRequest отправляет JSON на сервер
+// sendRequest отправляет JSON на сервер (без изменений)
 func sendRequest(client *http.Client, url string, jsonData []byte) ([]byte, error) {
 	// Создание POST запроса
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
@@ -197,36 +160,6 @@ func sendRequest(client *http.Client, url string, jsonData []byte) ([]byte, erro
 	defer resp.Body.Close()
 
 	// Чтение ответа
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	// Проверка статуса ответа
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return body, fmt.Errorf("сервер вернул статус: %d", resp.StatusCode)
-	}
-
-	return body, nil
-}
-*/
-
-// sendRequest отправляет JSON на сервер (без изменений)
-func sendRequest(client *http.Client, url string, jsonData []byte) ([]byte, error) {
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err

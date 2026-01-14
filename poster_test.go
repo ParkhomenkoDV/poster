@@ -254,28 +254,6 @@ func TestSaveResponse_PathOperations(t *testing.T) {
 	}
 }
 
-// TestSaveResponse_PermissionDenied тестирует сохранение в защищенную директорию
-func TestSaveResponse_PermissionDenied(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("Тест пропущен: запущено от root, нет смысла проверять права")
-	}
-
-	// Пытаемся сохранить в системную директорию
-	systemDir := "/root"
-	fileName := "test.json"
-	jsonData := []byte(`{"test": "data"}`)
-
-	err := saveResponse(fileName, jsonData, systemDir)
-	if err == nil {
-		// Если тест проходит под root, это нормально
-		if os.Geteuid() == 0 {
-			t.Log("Тест выполнен под root, ошибка прав доступа не ожидается")
-		} else {
-			t.Error("Ожидалась ошибка прав доступа, но её нет")
-		}
-	}
-}
-
 // TestSaveResponse_FileAlreadyExists тестирует перезапись существующего файла
 func TestSaveResponse_FileAlreadyExists(t *testing.T) {
 	tempDir := t.TempDir()

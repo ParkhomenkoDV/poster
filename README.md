@@ -10,7 +10,7 @@
 2. Положить в корень проекта `.` директорию `requests` с запросами 
 
 ```bash
-go run poster.go [--url <URL>] [--requests <requests>] [--responses <responses>] [--timeout N]
+go run poster.go [--url <URL>] [--requests <имяДиректорииЗапросов>] [--responses <имяДиректорииОтветов>] [--timeout N] [--workers N]
 ```
 
 3. Результат прогона находится в директории `responses`

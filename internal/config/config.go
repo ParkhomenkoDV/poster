@@ -5,6 +5,7 @@ type Config struct {
 	RequestsDir  string `doc:"Директория с запросами json"`
 	ResponsesDir string `doc:"Директория с ответами json"`
 	Timeout      int    `doc:"Max время для ответа"`
+	Workers      int    `doc:"Количество параллельных работников"`
 }
 
 func New() (*Config, error) {
@@ -18,5 +19,6 @@ func New() (*Config, error) {
 		RequestsDir:  flags.RequestsDir,
 		ResponsesDir: flags.ResponsesDir,
 		Timeout:      flags.Timeout,
+		Workers:      flags.Workers,
 	}, nil
 }
