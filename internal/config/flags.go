@@ -31,6 +31,7 @@ func parse() (*Flags, error) {
 	}
 	if *timeout <= 0 {
 		fmt.Println(usage)
+		return &Flags{}, fmt.Errorf("timeout=%v <= 0", *timeout)
 	}
 
 	return &Flags{
