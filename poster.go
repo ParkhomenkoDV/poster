@@ -98,7 +98,6 @@ func main() {
 			fmt.Printf("Ошибка обработки файла %s: %v\n", result.FileName, result.Err)
 		} else {
 			successCount++
-			fmt.Printf("Файл %s успешно обработан\n", result.FileName)
 		}
 	}
 	fmt.Printf("\nОбработка завершена! Успешно: %d, Ошибок: %d\n", successCount, errorCount)
