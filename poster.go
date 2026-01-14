@@ -79,7 +79,7 @@ func main() {
 		}
 	}
 
-	fmt.Println("\nОбработка завершена!")
+	fmt.Println("Обработка завершена!")
 }
 
 // sendRequest отправляет JSON на сервер
