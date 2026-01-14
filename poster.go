@@ -9,13 +9,21 @@ import (
 	"os"
 	"path/filepath"
 	"poster/internal/config"
+	"sync"
 	"time"
 )
+
+// Result содержит результат обработки файла
+type Result struct {
+	FileName string
+	Err      error
+}
 
 func main() {
 	cfg, err := config.New()
 	if err != nil {
-		panic(err)
+		fmt.Printf("Ошибка конфигурации %+v: %v", cfg, err)
+		return
 	}
 
 	// Проверка наличия директории с запросами
@@ -43,45 +51,133 @@ func main() {
 	}
 	fmt.Printf("Найдено %d JSON файлов для отправки\n", len(filePaths))
 
+	// Ограничиваем количество одновременных горутин
+	maxWorkers := 5
+	if len(filePaths) < maxWorkers {
+		maxWorkers = len(filePaths)
+	}
+
+	// Каналы для работы
+	filesChan := make(chan string, len(filePaths))
+	resultsChan := make(chan Result, len(filePaths))
+
 	// Создание HTTP клиента с таймаутом
 	client := &http.Client{
 		Timeout: time.Duration(cfg.Timeout) * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns:        maxWorkers,
+			MaxIdleConnsPerHost: maxWorkers,
+			IdleConnTimeout:     90 * time.Second,
+		},
 	}
 
-	// Обработка каждого файла
+	// Запускаем воркеров
+	var wg sync.WaitGroup
+	for i := 0; i < maxWorkers; i++ {
+		wg.Add(1)
+		go work(client, cfg.URL, cfg.ResponsesDir, filesChan, resultsChan, &wg)
+	}
+
+	// Отправляем задачи в канал
 	for _, filePath := range filePaths {
+		filesChan <- filePath
+	}
+	close(filesChan)
+
+	// Ждем завершения воркеров
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+
+	// Собираем результаты
+	successCount, errorCount := 0, 0
+	for result := range resultsChan {
+		if result.Err != nil {
+			errorCount++
+			fmt.Printf("Ошибка обработки файла %s: %v\n", result.FileName, result.Err)
+		} else {
+			successCount++
+			fmt.Printf("Файл %s успешно обработан\n", result.FileName)
+		}
+	}
+	fmt.Printf("\nОбработка завершена! Успешно: %d, Ошибок: %d\n", successCount, errorCount)
+
+	/*
+		// Обработка каждого файла
+		for _, filePath := range filePaths {
+			fileName := filepath.Base(filePath)
+
+			// Чтение JSON файла
+			jsonData, err := os.ReadFile(filePath)
+			if err != nil {
+				fmt.Printf("Ошибка чтения файла %s: %v\n", fileName, err)
+				continue
+			}
+
+			// Проверка валидности JSON
+			if !json.Valid(jsonData) {
+				fmt.Printf("Файл %s содержит невалидный JSON\n", fileName)
+				continue
+			}
+
+			// Отправка запроса на сервер
+			response, err := sendRequest(client, cfg.URL, jsonData)
+			if err != nil {
+				fmt.Printf("Ошибка отправки запроса: %v\n", err)
+				continue
+			}
+
+			// Сохранение ответа
+			if err := saveResponse(fileName, response, cfg.ResponsesDir); err != nil {
+				fmt.Printf("Ошибка сохранения ответа: %v\n", err)
+				continue
+			}
+		}
+
+		fmt.Println("Обработка завершена!")
+	*/
+}
+
+// work обрабатывает файлы из канала
+func work(client *http.Client, url, responsesDir string,
+	filesChan <-chan string, resultsChan chan<- Result, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	for filePath := range filesChan {
 		fileName := filepath.Base(filePath)
 
 		// Чтение JSON файла
 		jsonData, err := os.ReadFile(filePath)
 		if err != nil {
-			fmt.Printf("Ошибка чтения файла %s: %v\n", fileName, err)
+			resultsChan <- Result{FileName: fileName, Err: fmt.Errorf("чтение файла: %v", err)}
 			continue
 		}
 
 		// Проверка валидности JSON
 		if !json.Valid(jsonData) {
-			fmt.Printf("Файл %s содержит невалидный JSON\n", fileName)
+			resultsChan <- Result{FileName: fileName, Err: fmt.Errorf("невалидный JSON")}
 			continue
 		}
 
 		// Отправка запроса на сервер
-		response, err := sendRequest(client, cfg.URL, jsonData)
+		response, err := sendRequest(client, url, jsonData)
 		if err != nil {
-			fmt.Printf("Ошибка отправки запроса: %v\n", err)
+			resultsChan <- Result{FileName: fileName, Err: fmt.Errorf("отправка запроса: %v", err)}
 			continue
 		}
 
 		// Сохранение ответа
-		if err := saveResponse(fileName, response, cfg.ResponsesDir); err != nil {
-			fmt.Printf("Ошибка сохранения ответа: %v\n", err)
+		if err := saveResponse(fileName, response, responsesDir); err != nil {
+			resultsChan <- Result{FileName: fileName, Err: fmt.Errorf("сохранение ответа: %v", err)}
 			continue
 		}
-	}
 
-	fmt.Println("Обработка завершена!")
+		resultsChan <- Result{FileName: fileName, Err: nil}
+	}
 }
 
+/*
 // sendRequest отправляет JSON на сервер
 func sendRequest(client *http.Client, url string, jsonData []byte) ([]byte, error) {
 	// Создание POST запроса
@@ -114,6 +210,35 @@ func sendRequest(client *http.Client, url string, jsonData []byte) ([]byte, erro
 
 	return body, nil
 }
+*/
+
+// sendRequest отправляет JSON на сервер (без изменений)
+func sendRequest(client *http.Client, url string, jsonData []byte) ([]byte, error) {
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return body, fmt.Errorf("сервер вернул статус: %d", resp.StatusCode)
+	}
+
+	return body, nil
+}
 
 // saveResponse сохраняет ответ директорию
 func saveResponse(fileName string, response []byte, path string) error {
@@ -123,6 +248,5 @@ func saveResponse(fileName string, response []byte, path string) error {
 		formattedJSON.Write(response) // Если JSON невалидный, сохраняем как есть
 	}
 
-	// Сохранение в файл
 	return os.WriteFile(path+"/"+fileName, formattedJSON.Bytes(), 0644)
 }
