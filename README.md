@@ -6,9 +6,14 @@
 
 ## Usage
 
+1. Поднять сервер по адресу `URL`
+2. Положить в корень проекта `.` директорию `requests` с запросами 
+
 ```bash
-go run poster.go [--url <URL>] [--requests <имяДиректории>] [--responses <имяДиректории>] [--timeout N]
+go run poster.go [--url <URL>] [--requests <requests>] [--responses <responses>] [--timeout N]
 ```
+
+3. Результат прогона находится в директории `responses`
 
 ## Structure
 ```
