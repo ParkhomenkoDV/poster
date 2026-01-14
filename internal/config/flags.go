@@ -15,7 +15,7 @@ type Flags struct {
 }
 
 func parse() (*Flags, error) {
-	url := flag.String("url", "http://localhost:8080/api", "Адрес сервера")
+	url := flag.String("url", "http://localhost:8080/execute", "Адрес сервера")
 	requestsDir := flag.String("requests", "requests", "Директория с запросами json")
 	responsesDir := flag.String("responses", "responses", "Директория с ответами json")
 	timeout := flag.Int("timeout", 3, "Max время для ответа")
