@@ -7,7 +7,7 @@
 ## Usage
 
 ```bash
-go run poster.go [--url <URL>] [--requests <путь>] [--responses <путь>] [--timeout N]
+go run poster.go [--url <URL>] [--requests <имяДиректории>] [--responses <имяДиректории>] [--timeout N]
 ```
 
 ## Structure
