@@ -12,7 +12,7 @@ go run poster.go [--url <URL>] [--requests <имяДиректории>] [--resp
 
 ## Structure
 ```
-Poster/
+poster/
 |-- poster.go
 |-- requests/
 |   |-- request1.json
@@ -23,5 +23,7 @@ Poster/
 |   |-- response2.json
 |   └-- ...
 |-- internal/
+|   |-- config.go
+|   |-- flags.go
 ```
 
