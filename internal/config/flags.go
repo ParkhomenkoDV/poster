@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-const usage = "Использование: go run poster.go --url <URL> --requests <путь> --responses <путь> --timeout N"
+const usage = "Использование: go run poster.go [--url <URL>] [--requests <путь>] [--responses <путь>] [--timeout N]"
 
 type Flags struct {
 	URL          string `doc:"Адрес сервера"`
