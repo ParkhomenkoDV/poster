@@ -85,18 +85,15 @@ func TestSaveResponse_EmptyJSON(t *testing.T) {
 			name:     "пустой объект",
 			jsonData: []byte(`{}`),
 			expected: "{}",
-		},
-		{
+		}, {
 			name:     "пустой массив",
 			jsonData: []byte(`[]`),
 			expected: "[]",
-		},
-		{
+		}, {
 			name:     "пустая строка",
 			jsonData: []byte(``),
 			expected: "",
-		},
-		{
+		}, {
 			name:     "null",
 			jsonData: []byte(`null`),
 			expected: "null",
@@ -196,26 +193,22 @@ func TestSaveResponse_PathOperations(t *testing.T) {
 			fileName:   "response.json",
 			path:       tempDir,
 			shouldFail: false,
-		},
-		{
+		}, {
 			name:       "путь с поддиректорией",
 			fileName:   "response.json",
 			path:       filepath.Join(tempDir, "subdir"),
 			shouldFail: true, // Директория не существует
-		},
-		{
+		}, {
 			name:       "имя файла с пробелами",
 			fileName:   "my response.json",
 			path:       tempDir,
 			shouldFail: false,
-		},
-		{
+		}, {
 			name:       "имя файла с кириллицей",
 			fileName:   "ответ.json",
 			path:       tempDir,
 			shouldFail: false,
-		},
-		{
+		}, {
 			name:       "относительный путь",
 			fileName:   "response.json",
 			path:       ".",
@@ -306,13 +299,11 @@ func TestSaveResponse_SpecialCharacters(t *testing.T) {
 			name:     "unicode символы",
 			jsonData: []byte(`{"message": "Привет мир! 🚀"}`),
 			desc:     "кириллица и эмодзи",
-		},
-		{
+		}, {
 			name:     "escape последовательности",
 			jsonData: []byte(`{"text": "Line1\nLine2\tTab\"Quote\\Backslash"}`),
 			desc:     "специальные символы",
-		},
-		{
+		}, {
 			name:     "HTML символы",
 			jsonData: []byte(`{"html": "<div>Test &amp; Check</div>"}`),
 			desc:     "HTML entities",

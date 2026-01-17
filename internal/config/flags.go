@@ -17,11 +17,13 @@ type Flags struct {
 }
 
 func parse() (*Flags, error) {
+	numCPU := runtime.NumCPU()
+
 	url := flag.String("url", "http://localhost:8080/execute", "Адрес сервера")
 	requestsDir := flag.String("requests", "requests", "Директория с запросами json")
 	responsesDir := flag.String("responses", "responses", "Директория с ответами json")
 	timeout := flag.Int("timeout", 3, "Max время для ответа")
-	workers := flag.Int("workers", runtime.NumCPU()-1, "Количество параллельных работников")
+	workers := flag.Int("workers", numCPU-1, "Количество параллельных работников")
 
 	flag.Parse()
 
@@ -37,9 +39,9 @@ func parse() (*Flags, error) {
 		fmt.Println(usage)
 		return &Flags{}, fmt.Errorf("timeout=%v <= 0", *timeout)
 	}
-	if *workers <= 0 {
+	if *workers < 1 || numCPU < *workers {
 		fmt.Println(usage)
-		return &Flags{}, fmt.Errorf("workers=%v <= 0", *workers)
+		return &Flags{}, fmt.Errorf("workers=%v must be in [%v..%v]", *workers, 1, numCPU)
 	}
 
 	return &Flags{
