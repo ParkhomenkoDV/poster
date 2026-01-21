@@ -22,8 +22,8 @@ func parse() (*Flags, error) {
 	url := flag.String("url", "http://localhost:8080/execute", "Адрес сервера")
 	requestsDir := flag.String("requests", "requests", "Директория с запросами json")
 	responsesDir := flag.String("responses", "responses", "Директория с ответами json")
-	timeout := flag.Int("timeout", 3, "Max время для ответа")
-	workers := flag.Int("workers", numCPU-1, "Количество параллельных работников")
+	timeout := flag.Int("timeout", 30, "Max время для ответа")
+	workers := flag.Int("workers", numCPU, "Количество параллельных работников")
 
 	flag.Parse()
 

@@ -29,4 +29,4 @@ run:
 
 build:
 	@echo "$(BLUE)Building project...$(RESET)"
-	go build
+	go build -o poster poster.go

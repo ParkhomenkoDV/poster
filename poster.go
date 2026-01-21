@@ -66,7 +66,8 @@ func main() {
 		Transport: &http.Transport{
 			MaxIdleConns:        cfg.Workers,
 			MaxIdleConnsPerHost: cfg.Workers,
-			IdleConnTimeout:     90 * time.Second,
+			MaxConnsPerHost:     cfg.Workers * 2,
+			IdleConnTimeout:     90 * time.Second, // Таймаут на неактивные соединения
 		},
 	}
 
