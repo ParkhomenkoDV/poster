@@ -67,7 +67,7 @@ func main() {
 			MaxIdleConns:        cfg.Workers,
 			MaxIdleConnsPerHost: cfg.Workers,
 			MaxConnsPerHost:     cfg.Workers * 2,
-			IdleConnTimeout:     90 * time.Second, // Таймаут на неактивные соединения
+			IdleConnTimeout:     time.Duration(cfg.Timeout*3) * time.Second, // Таймаут на неактивные соединения
 		},
 	}
 
