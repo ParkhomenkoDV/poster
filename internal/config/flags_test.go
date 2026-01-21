@@ -19,11 +19,11 @@ func TestParseFlags(t *testing.T) {
 	}{
 		{
 			name:            "все флаги заданы",
-			args:            []string{"cmd", "--url", "https://test.com", "--requests", "req", "--responses", "res", "--timeout", "30"},
+			args:            []string{"cmd", "--url", "https://test.com", "--requests", "req", "--responses", "res", "--timeout", "60"},
 			expectedURL:     "https://test.com",
 			expectedReqDir:  "req",
 			expectedResDir:  "res",
-			expectedTimeout: 30,
+			expectedTimeout: 60,
 			shouldFail:      false,
 		},
 		{
@@ -32,7 +32,7 @@ func TestParseFlags(t *testing.T) {
 			expectedURL:     "http://localhost:8080/execute",
 			expectedReqDir:  "req",
 			expectedResDir:  "res",
-			expectedTimeout: 3,
+			expectedTimeout: 30,
 			shouldFail:      false,
 		},
 		{
