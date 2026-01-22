@@ -6,6 +6,7 @@ type Config struct {
 	ResponsesDir string `doc:"Директория с ответами json"`
 	Timeout      int    `doc:"Max время для ответа"`
 	Workers      int    `doc:"Количество параллельных работников"`
+	Log          string `doc:"Уровень логирования ('', 'stdout', 'debug', 'info', 'warn', 'error')"`
 }
 
 func New() (*Config, error) {
@@ -20,5 +21,6 @@ func New() (*Config, error) {
 		ResponsesDir: flags.ResponsesDir,
 		Timeout:      flags.Timeout,
 		Workers:      flags.Workers,
+		Log:          flags.Log,
 	}, nil
 }
