@@ -64,9 +64,9 @@ func main() {
 	client := &http.Client{
 		Timeout: time.Duration(cfg.Timeout) * time.Second,
 		Transport: &http.Transport{
-			MaxIdleConns:        cfg.Workers,
-			MaxIdleConnsPerHost: cfg.Workers,
-			MaxConnsPerHost:     cfg.Workers * 2,
+			MaxIdleConns:        cfg.Workers * 10,
+			MaxIdleConnsPerHost: cfg.Workers * 10,
+			MaxConnsPerHost:     cfg.Workers * 20,
 			IdleConnTimeout:     time.Duration(cfg.Timeout*3) * time.Second, // Таймаут на неактивные соединения
 		},
 	}
