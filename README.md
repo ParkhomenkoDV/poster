@@ -15,7 +15,7 @@
 2. Поднять сервер по адресу `URL`
  
 ```bash
-go run poster.go [--url <URL>] [--requests <имяДиректорииЗапросов>] [--responses <имяДиректорииОтветов>] [--timeout N] [--workers N]
+go run poster.go [-url <URL>] [-requests <имяДиректорииЗапросов>] [-responses <имяДиректорииОтветов>] [-timeout N] [-workers N] [-log S]
 ```
 
 Флаг | Описание | По умолчанию
@@ -25,6 +25,7 @@ requests | Директория с JSON-файлами запросов | reques
 responses | Директория для сохранения ответов | responses
 timeout | Таймаут HTTP-запросов (секунды) | 30
 workers | Количество параллельных воркеров | количетсво ядер
+log | Уровень логирования ('', 'stdout', 'debug', 'info', 'warn', 'error', 'fatal') | ''
 
 3. Результат прогона находится в директории `responses`
 
