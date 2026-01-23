@@ -348,7 +348,6 @@ func sendRequest(client *http.Client, url string, jsonData []byte, log *logger.L
 		log.Error("Ошибка чтения ответа", map[string]interface{}{
 			"duration":     duration.String(),
 			"status_code":  resp.StatusCode,
-			"status":       resp.Status,
 			"error":        err.Error(),
 			"url":          url,
 			"content_type": resp.Header.Get("Content-Type"),
@@ -361,7 +360,6 @@ func sendRequest(client *http.Client, url string, jsonData []byte, log *logger.L
 		"duration":       duration.String(),
 		"duration_ms":    duration.Milliseconds(),
 		"status_code":    resp.StatusCode,
-		"status":         resp.Status,
 		"response_size":  len(body),
 		"url":            url,
 		"content_type":   resp.Header.Get("Content-Type"),
@@ -529,5 +527,6 @@ func statistic(resultsChan <-chan Result, log *logger.Logger) {
 		"successful": successCount,
 		"failed":     errorCount,
 		"total":      successCount + errorCount,
+		"duration":   totalDuration.String(),
 	})
 }

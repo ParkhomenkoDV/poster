@@ -25,8 +25,8 @@ prof:
 
 run:
 	@echo "$(BLUE)Running project...$(RESET)"
-	go run poster.go
+	go run poster.go -log=info
 
 build:
 	@echo "$(BLUE)Building project...$(RESET)"
-	go build -o poster poster.go
+	go build -o poster poster.go 

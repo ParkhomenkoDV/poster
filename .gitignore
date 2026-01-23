@@ -2,6 +2,7 @@
 
 requests/
 responses/
+log.json
 
 *.out
 *.test
