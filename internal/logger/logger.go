@@ -72,13 +72,17 @@ func New(level string, outputFile string) (*Logger, error) {
 	case "stdout":
 		return &Logger{level: STDOUT, output: os.Stdout}, nil
 	default:
-		return &Logger{level: NOLOG}, nil
+		return &Logger{level: NOLOG, output: io.Discard}, nil
 	}
 
 	// Настраиваем вывод
 	output, err := os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		return &Logger{}, fmt.Errorf("открытие файла логов: %v", err)
+		return &Logger{
+			level:  logLevel,
+			output: os.Stderr,
+			fields: make(map[string]interface{}),
+		}, fmt.Errorf("открытие файла логов: %v", err)
 	}
 
 	return &Logger{
@@ -125,6 +129,14 @@ func (l *Logger) WithFields(fields map[string]interface{}) *Logger {
 // log записывает сообщение
 func (l *Logger) log(level Level, msg string, fields map[string]interface{}) {
 	if level < l.level {
+		return
+	}
+
+	// Проверяем, есть ли output
+	l.mu.Lock()
+	output := l.output
+	l.mu.Unlock()
+	if output == nil {
 		return
 	}
 
