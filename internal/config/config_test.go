@@ -3,6 +3,7 @@ package config
 import (
 	"flag"
 	"os"
+	"runtime"
 	"strconv"
 	"testing"
 )
@@ -43,6 +44,16 @@ func TestNew_DefaultValues(t *testing.T) {
 	if cfg.Timeout != expectedTimeout {
 		t.Errorf("Timeout = %d, ожидалось %d", cfg.Timeout, expectedTimeout)
 	}
+
+	expectedWorkers := runtime.NumCPU()
+	if cfg.Workers != expectedWorkers {
+		t.Errorf("Workers = %d, ожидалось %d", cfg.Workers, expectedWorkers)
+	}
+
+	expectedLog := ""
+	if cfg.Log != expectedLog {
+		t.Errorf("Log = %q, ожидалось %q", cfg.Log, expectedLog)
+	}
 }
 
 // TestNew_CustomValues тестирует создание конфигурации с пользовательскими значениями
@@ -58,6 +69,8 @@ func TestNew_CustomValues(t *testing.T) {
 		"--requests", "/path/to/requests",
 		"--responses", "/path/to/responses",
 		"--timeout", "10",
+		"--workers", "4",
+		"--log", "debug",
 	}
 
 	// Сбрасываем флаги
@@ -87,6 +100,16 @@ func TestNew_CustomValues(t *testing.T) {
 	if cfg.Timeout != expectedTimeout {
 		t.Errorf("Timeout = %d, ожидалось %d", cfg.Timeout, expectedTimeout)
 	}
+
+	expectedWorkers := 4
+	if cfg.Workers != expectedWorkers {
+		t.Errorf("Workers = %d, ожидалось %d", cfg.Workers, expectedWorkers)
+	}
+
+	expectedLog := "debug"
+	if cfg.Log != expectedLog {
+		t.Errorf("Log = %q, ожидалось %q", cfg.Log, expectedLog)
+	}
 }
 
 // TestNew_EmptyRequestsDir тестирует обработку пустой директории запросов
@@ -105,10 +128,9 @@ func TestNew_EmptyRequestsDir(t *testing.T) {
 		t.Error("Ожидалась ошибка для пустой директории запросов, но её нет")
 	}
 
-	// Проверяем, что конфигурация всё равно создана с дефолтными значениями
-	// (в зависимости от реализации вашей функции parse)
-	if cfg != nil {
-		t.Logf("Конфигурация создана, но ожидалась ошибка: %+v", cfg)
+	// Проверяем, что конфигурация не создана (должна вернуться пустая структура при ошибке)
+	if cfg != nil && (cfg.RequestsDir != "" || cfg.ResponsesDir != "") {
+		t.Errorf("Конфигурация не должна быть создана при ошибке, но получена: %+v", cfg)
 	}
 }
 
@@ -128,14 +150,14 @@ func TestNew_EmptyResponsesDir(t *testing.T) {
 		t.Error("Ожидалась ошибка для пустой директории ответов, но её нет")
 	}
 
-	if cfg != nil {
-		t.Logf("Конфигурация создана, но ожидалась ошибка: %+v", cfg)
+	if cfg != nil && (cfg.RequestsDir != "" || cfg.ResponsesDir != "") {
+		t.Errorf("Конфигурация не должна быть создана при ошибке, но получена: %+v", cfg)
 	}
 }
 
 // TestNew_InvalidTimeout тестирует обработку некорректного таймаута
 func TestNew_InvalidTimeout(t *testing.T) {
-	testCases := []struct {
+	tests := []struct {
 		name      string
 		timeout   string
 		expectErr bool
@@ -146,19 +168,19 @@ func TestNew_InvalidTimeout(t *testing.T) {
 		{"Большой таймаут", "3600", false},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			oldArgs := os.Args
 			defer func() { os.Args = oldArgs }()
 
-			os.Args = []string{"cmd", "--timeout", tc.timeout}
+			os.Args = []string{"cmd", "--requests", "req", "--responses", "res", "--timeout", test.timeout}
 
 			// Сбрасываем флаги
 			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 
 			cfg, err := New()
 
-			if tc.expectErr {
+			if test.expectErr {
 				if err == nil {
 					t.Error("Ожидалась ошибка для некорректного таймаута")
 				}
@@ -166,10 +188,102 @@ func TestNew_InvalidTimeout(t *testing.T) {
 				if err != nil {
 					t.Errorf("Не ожидалась ошибка, но получена: %v", err)
 				}
-				timeout, err := strconv.Atoi(tc.timeout)
-				if cfg != nil && cfg.Timeout != timeout || err != nil {
-					t.Errorf("Timeout = %d, ожидалось %s", cfg.Timeout, tc.timeout)
+				if cfg != nil {
+					timeout, _ := strconv.Atoi(test.timeout)
+					if cfg.Timeout != timeout {
+						t.Errorf("Timeout = %d, ожидалось %d", cfg.Timeout, timeout)
+					}
 				}
+			}
+		})
+	}
+}
+
+// TestNew_InvalidWorkers тестирует обработку некорректного количества workers
+func TestNew_InvalidWorkers(t *testing.T) {
+	tests := []struct {
+		name      string
+		workers   string
+		expectErr bool
+	}{
+		{"Нулевое количество workers", "0", true},
+		{"Отрицательное количество workers", "-1", true},
+		{"Положительное количество workers", "1", false},
+		{"Количество workers больше чем CPU", "1000", true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			oldArgs := os.Args
+			defer func() { os.Args = oldArgs }()
+
+			os.Args = []string{"cmd", "--requests", "req", "--responses", "res", "--workers", test.workers}
+
+			// Сбрасываем флаги
+			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+
+			_, err := New()
+
+			if test.expectErr {
+				if err == nil {
+					t.Error("Ожидалась ошибка для некорректного количества workers")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Не ожидалась ошибка, но получена: %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestNew_InvalidLogLevel тестирует обработку некорректного уровня логирования
+func TestNew_InvalidLogLevel(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"cmd", "--requests", "req", "--responses", "res", "--log", "invalid_level"}
+
+	// Сбрасываем флаги
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+
+	_, err := New()
+	if err == nil {
+		t.Error("Ожидалась ошибка для некорректного уровня логирования, но её нет")
+	}
+}
+
+// TestNew_ValidLogLevels тестирует обработку валидных уровней логирования
+func TestNew_ValidLogLevels(t *testing.T) {
+	tests := []struct {
+		name     string
+		logLevel string
+	}{
+		{"Пустой уровень логирования", ""},
+		{"Уровень stdout", "stdout"},
+		{"Уровень debug", "debug"},
+		{"Уровень info", "info"},
+		{"Уровень warn", "warn"},
+		{"Уровень error", "error"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			oldArgs := os.Args
+			defer func() { os.Args = oldArgs }()
+
+			os.Args = []string{"cmd", "--requests", "req", "--responses", "res", "--log", test.logLevel}
+
+			// Сбрасываем флаги
+			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+
+			cfg, err := New()
+			if err != nil {
+				t.Fatalf("Не ожидалась ошибка для валидного уровня логирования %q: %v", test.logLevel, err)
+			}
+
+			if cfg.Log != test.logLevel {
+				t.Errorf("Log = %q, ожидалось %q", cfg.Log, test.logLevel)
 			}
 		})
 	}
@@ -186,6 +300,8 @@ func TestParse_ValidFlags(t *testing.T) {
 		"--requests", "test_requests",
 		"--responses", "test_responses",
 		"--timeout", "5",
+		"--workers", "2",
+		"--log", "info",
 	}
 
 	// Сбрасываем флаги
@@ -210,6 +326,14 @@ func TestParse_ValidFlags(t *testing.T) {
 
 	if flags.Timeout != 5 {
 		t.Errorf("Timeout = %d, ожидалось %d", flags.Timeout, 5)
+	}
+
+	if flags.Workers != 2 {
+		t.Errorf("Workers = %d, ожидалось %d", flags.Workers, 2)
+	}
+
+	if flags.Log != "info" {
+		t.Errorf("Log = %q, ожидалось %q", flags.Log, "info")
 	}
 }
 
@@ -261,5 +385,50 @@ func TestParse_MissingFlags(t *testing.T) {
 	// Проверяем значения по умолчанию
 	if flags.URL != "http://localhost:8080/execute" {
 		t.Errorf("URL = %q, ожидалось значение по умолчанию", flags.URL)
+	}
+}
+
+// TestNew_ErrorPropagation тестирует передачу ошибок из parse в New
+func TestNew_ErrorPropagation(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	// Устанавливаем некорректные аргументы
+	os.Args = []string{"cmd", "--requests", "", "--responses", ""}
+
+	// Сбрасываем флаги
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+
+	cfg, err := New()
+	if err == nil {
+		t.Error("Ожидалась ошибка, но её нет")
+	}
+
+	// Проверяем что возвращается пустая конфигурация при ошибке
+	if cfg == nil {
+		t.Error("Ожидалась пустая структура Config при ошибке")
+	} else if cfg.URL != "" || cfg.RequestsDir != "" || cfg.ResponsesDir != "" {
+		t.Errorf("Ожидалась пустая структура Config, но получено: %+v", cfg)
+	}
+}
+
+// TestNew_WorkersDefaultCPU тестирует дефолтное значение workers как количество CPU
+func TestNew_WorkersDefaultCPU(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"cmd"}
+
+	// Сбрасываем флаги
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+
+	cfg, err := New()
+	if err != nil {
+		t.Fatalf("New() вернул ошибку: %v", err)
+	}
+
+	expectedWorkers := runtime.NumCPU()
+	if cfg.Workers != expectedWorkers {
+		t.Errorf("Workers = %d, ожидалось количество CPU: %d", cfg.Workers, expectedWorkers)
 	}
 }
