@@ -55,20 +55,20 @@ type Logger struct {
 }
 
 // New создает новый логгер
-func New(level string, outputFile string) (*Logger, error) {
+func New(levelName string, outputFile string) (*Logger, error) {
 	// Определяем уровень логирования
-	var logLevel Level
-	switch strings.ToLower(level) {
+	var level Level
+	switch strings.ToLower(levelName) {
 	case "fatal":
-		logLevel = FATAL
+		level = FATAL
 	case "error":
-		logLevel = ERROR
+		level = ERROR
 	case "warn", "warning":
-		logLevel = WARN
+		level = WARN
 	case "info":
-		logLevel = INFO
+		level = INFO
 	case "debug":
-		logLevel = DEBUG
+		level = DEBUG
 	case "stdout":
 		return &Logger{level: STDOUT, output: os.Stdout}, nil
 	default:
@@ -79,14 +79,14 @@ func New(level string, outputFile string) (*Logger, error) {
 	output, err := os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return &Logger{
-			level:  logLevel,
+			level:  level,
 			output: os.Stderr,
 			fields: make(map[string]interface{}),
 		}, fmt.Errorf("открытие файла логов: %v", err)
 	}
 
 	return &Logger{
-		level:  logLevel,
+		level:  level,
 		output: output,
 		fields: make(map[string]interface{}),
 	}, nil
