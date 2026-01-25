@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"runtime"
+	"strconv"
 	"testing"
 )
 
@@ -278,18 +279,23 @@ func TestParseWorkersRange(t *testing.T) {
 		shouldFail bool
 	}{
 		{
+			name:       "workers = 0 (меньше минимума)",
+			args:       []string{"cmd", "--requests", "req", "--responses", "res", "--workers", "0"},
+			want:       0,
+			shouldFail: true,
+		}, {
 			name:       "workers = 1 (минимум)",
 			args:       []string{"cmd", "--requests", "req", "--responses", "res", "--workers", "1"},
 			want:       1,
 			shouldFail: false,
 		}, {
 			name:       "workers = numCPU (максимум)",
-			args:       []string{"cmd", "--requests", "req", "--responses", "res", "--workers", string(rune(numCPU))},
+			args:       []string{"cmd", "--requests", "req", "--responses", "res", "--workers", strconv.Itoa(numCPU)},
 			want:       numCPU,
 			shouldFail: false,
 		}, {
 			name:       "workers = numCPU + 1 (больше максимума)",
-			args:       []string{"cmd", "--requests", "req", "--responses", "res", "--workers", string(rune(numCPU + 1))},
+			args:       []string{"cmd", "--requests", "req", "--responses", "res", "--workers", strconv.Itoa(numCPU + 1)},
 			want:       0,
 			shouldFail: true,
 		},
