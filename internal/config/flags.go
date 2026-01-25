@@ -7,7 +7,7 @@ import (
 	"slices"
 )
 
-const usage = "Использование: go run poster.go [--url <URL>] [--requests <имяДиректории>] [--responses <имяДиректории>] [--timeout N] [--workers N]"
+const usage = "Использование: go run poster.go [-url=<URL>] [-requests=<имяДиректории>] [-responses=<имяДиректории>] [-timeout=N] [-workers=N] [-log=S]"
 
 type Flags struct {
 	URL          string `doc:"Адрес сервера"`
@@ -32,19 +32,19 @@ func parse() (*Flags, error) {
 
 	if *requestsDir == "" {
 		fmt.Println(usage)
-		return &Flags{}, fmt.Errorf("empty requests dir %s", *requestsDir)
+		return &Flags{}, fmt.Errorf("пустая директория запросов: %s", *requestsDir)
 	}
 	if *responsesDir == "" {
 		fmt.Println(usage)
-		return &Flags{}, fmt.Errorf("empty responses dir %s", *responsesDir)
+		return &Flags{}, fmt.Errorf("пустая директория ответов: %s", *responsesDir)
 	}
 	if *timeout <= 0 {
 		fmt.Println(usage)
-		return &Flags{}, fmt.Errorf("timeout=%v <= 0", *timeout)
+		return &Flags{}, fmt.Errorf("timeout=%v должен быть > 0", *timeout)
 	}
 	if *workers < 1 || numCPU < *workers {
 		fmt.Println(usage)
-		return &Flags{}, fmt.Errorf("workers=%v must be in [%v..%v]", *workers, 1, numCPU)
+		return &Flags{}, fmt.Errorf("workers=%v должен быть в диапазоне [1..%v]", *workers, numCPU)
 	}
 	levels := []string{"", "stdout", "debug", "info", "warn", "error"}
 	if !slices.Contains(levels, *log) {
