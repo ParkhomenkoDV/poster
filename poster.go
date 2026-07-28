@@ -113,7 +113,7 @@ func main() {
 
 	// Запускаем обработку
 	startTime := time.Now()
-	results := post(fileDirs, cfg, client, mainLogger)
+	results := post(cfg, fileDirs, client, mainLogger)
 	totalDuration := time.Since(startTime)
 
 	// Считаем статистику
@@ -139,8 +139,8 @@ func main() {
 
 // post запускает конвейерную обработку
 func post(
-	fileDirs []string,
 	cfg *config.Config,
+	fileDirs []string,
 	client *http.Client,
 	log *logger.Logger,
 ) []Result {
@@ -151,7 +151,7 @@ func post(
 	for _, dir := range fileDirs {
 		taskChan <- dir
 	}
-	close(taskChan) // Закрываем, чтобы воркеры знали что задач больше нет
+	close(taskChan) // Закрываем смену
 
 	var wg sync.WaitGroup // Счётчик рабочих
 
@@ -210,15 +210,15 @@ func work(
 ) {
 	defer wg.Done()
 
-	// Локальный буфер для чтения файлов (переиспользуем)
+	// Локальный буфер для чтения файлов
 	buf := make([]byte, 0, 1024*1024) // 1MB начальный размер
 
-	for filePath := range taskChan {
-		fileName := filepath.Base(filePath)
+	for fileDir := range taskChan {
+		fileName := filepath.Base(fileDir)
 		startTime := time.Now()
 
 		// Читаем файл
-		jsonData, fileSize, err := readFile(filePath, &buf)
+		jsonData, fileSize, err := readFile(fileDir, &buf)
 		if err != nil {
 			resultChan <- Result{
 				FileName: fileName,
@@ -312,8 +312,8 @@ func readFile(path string, buf *[]byte) ([]byte, int64, error) {
 	fileSize := stat.Size()
 
 	// Расширяем буфер если нужно
-	if cap(*buf) < int(fileSize) {
-		*buf = make([]byte, fileSize*2) // Увеличиваем с запасом
+	if int64(cap(*buf)) < fileSize {
+		*buf = make([]byte, fileSize*2) // Увеличиваем с двойным запасом
 	}
 
 	// Читаем в пред-выделенный буфер
