@@ -121,13 +121,17 @@ func main() {
 	for _, result := range results {
 		if result.Err != nil {
 			errorCount++
-			fmt.Printf("❌ %s: %v\n", result.FileName, result.Err)
+			mainLogger.Error("❌", map[string]interface{}{
+				"filename": result.FileName,
+				"error":    result.Err,
+			})
 		} else {
 			successCount++
-			fmt.Printf("✅ %s: %d [%dms]\n",
-				result.FileName,
-				result.StatusCode,
-				result.Duration.Milliseconds())
+			mainLogger.Info("✅", map[string]interface{}{
+				"filename":   result.FileName,
+				"statusCode": result.StatusCode,
+				"duration":   result.Duration.Milliseconds(),
+			})
 		}
 	}
 

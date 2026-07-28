@@ -20,21 +20,15 @@ go run poster.go [-url <URL>] [-requests <имяДиректорииЗапрос
 
 Флаг | Описание | По умолчанию
 ---|---|---
-URL | URL сервера для отправки запросов | http://localhost:8080/execute
-requests | Директория с JSON-файлами запросов | requests
-responses | Директория для сохранения ответов | responses
-indent | Форматирование ответа | false
-timeout | Таймаут HTTP-запросов (секунды) | 30
-workers | Количество параллельных воркеров | количетсво ядер
-log | Уровень логирования ('', 'stdout', 'debug', 'info', 'warn', 'error', 'fatal') | ''
+`url`       | URL сервера для отправки запросов  | http://localhost:8080/execute
+`requests`  | Директория с JSON-файлами запросов | requests
+`responses` | Директория для сохранения ответов  | responses
+`indent`    | Форматирование ответа              | false
+`timeout`   | Таймаут HTTP-запросов (секунды)    | 10
+`workers`   | Количество параллельных воркеров   | количетсво ядер
+`log`       | Уровень логирования ('', 'stdout', 'debug', 'info', 'warn', 'error', 'fatal') | ''
 
 3. Результат прогона находится в директории `responses`
-
-## Limitations
-
-- Поддерживаются только POST-запросы
-- Все запросы отправляются на один `URL`
-- Максимальное количество одновременных запросов ограничено параметром `workers`
 
 ## Build
 
@@ -48,12 +42,12 @@ go build -o poster poster.go
 poster/
 ├── poster.go             # Основной файл программы
 ├── requests/             # Директория с запросами
-│   ├── request1.json
-│   ├── request2.json
+│   ├── 1.json
+│   ├── 2.json
 │   └── ...
 ├── responses/            # Директория с ответами (создается автоматически)
-│   ├── request1.json
-│   ├── request2.json
+│   ├── 1.json
+│   ├── 2.json
 │   └── ...
 ├── internal/
 │   ├── config/

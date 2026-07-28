@@ -26,7 +26,7 @@ func parse() (*Flags, error) {
 	requestsDir := flag.String("requests", "requests", "Директория с запросами json")
 	responsesDir := flag.String("responses", "responses", "Директория с ответами json")
 	indent := flag.Bool("indent", false, "Форматирование ответ")
-	timeout := flag.Int("timeout", 30, "Max время для ответа")
+	timeout := flag.Int("timeout", 10, "Max время для ответа")
 	workers := flag.Int("workers", numCPU, "Количество параллельных работников")
 	log := flag.String("log", "", "Уровень логирования ('', 'stdout', 'debug', 'info', 'warn', 'error')")
 
