@@ -17,13 +17,13 @@ import (
 
 // Result содержит результат обработки файла
 type Result struct {
+	Err          error         `doc:"Ошибка"`
 	FileName     string        `doc:"Имя файла"`
 	FileSize     int64         `doc:"Размер файла"`
 	RequestSize  int           `doc:"Размер JSON запроса"`
 	ResponseSize int           `doc:"Размер JSON ответа"`
 	Duration     time.Duration `doc:"Время обработки"`
 	StatusCode   int           `doc:"HTTP статус код"`
-	Err          error         `doc:"Ощибка"`
 }
 
 func main() {
