@@ -15,7 +15,7 @@
 2. Поднять сервер по адресу `URL`
  
 ```bash
-go run poster.go [-url <URL>] [-requests <имяДиректорииЗапросов>] [-responses <имяДиректорииОтветов>] [-timeout N] [-workers N] [-log S]
+go run poster.go [-url <URL>] [-requests <имяДиректорииЗапросов>] [-responses <имяДиректорииОтветов>] [-indent] [-timeout N] [-workers N] [-log S]
 ```
 
 Флаг | Описание | По умолчанию
@@ -23,6 +23,7 @@ go run poster.go [-url <URL>] [-requests <имяДиректорииЗапрос
 URL | URL сервера для отправки запросов | http://localhost:8080/execute
 requests | Директория с JSON-файлами запросов | requests
 responses | Директория для сохранения ответов | responses
+indent | Форматирование ответа | false
 timeout | Таймаут HTTP-запросов (секунды) | 30
 workers | Количество параллельных воркеров | количетсво ядер
 log | Уровень логирования ('', 'stdout', 'debug', 'info', 'warn', 'error', 'fatal') | ''

@@ -7,12 +7,13 @@ import (
 	"slices"
 )
 
-const usage = "Использование: go run poster.go [-url=<URL>] [-requests=<имяДиректории>] [-responses=<имяДиректории>] [-timeout=N] [-workers=N] [-log=S]"
+const usage = "Использование: go run poster.go [-url=<URL>] [-requests=<имяДиректории>] [-responses=<имяДиректории>] [-indent] [-timeout=N] [-workers=N] [-log=S]"
 
 type Flags struct {
 	URL          string `doc:"Адрес сервера"`
 	RequestsDir  string `doc:"Директория с запросами json"`
 	ResponsesDir string `doc:"Директория с ответами json"`
+	Indent       bool   `doc:"Форматирование ответа"`
 	Timeout      int    `doc:"Max время для ответа"`
 	Workers      int    `doc:"Количество параллельных работников"`
 	Log          string `doc:"Уровень логирования"`
@@ -24,6 +25,7 @@ func parse() (*Flags, error) {
 	url := flag.String("url", "http://localhost:8080/execute", "Адрес сервера")
 	requestsDir := flag.String("requests", "requests", "Директория с запросами json")
 	responsesDir := flag.String("responses", "responses", "Директория с ответами json")
+	indent := flag.Bool("indent", false, "Форматирование ответ")
 	timeout := flag.Int("timeout", 30, "Max время для ответа")
 	workers := flag.Int("workers", numCPU, "Количество параллельных работников")
 	log := flag.String("log", "", "Уровень логирования ('', 'stdout', 'debug', 'info', 'warn', 'error')")
@@ -56,6 +58,7 @@ func parse() (*Flags, error) {
 		URL:          *url,
 		RequestsDir:  *requestsDir,
 		ResponsesDir: *responsesDir,
+		Indent:       *indent,
 		Timeout:      *timeout,
 		Workers:      *workers,
 		Log:          *log,

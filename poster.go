@@ -102,9 +102,9 @@ func main() {
 	client := &http.Client{
 		Timeout: time.Duration(cfg.Timeout) * time.Second,
 		Transport: &http.Transport{
-			MaxIdleConns:        cfg.Workers, // Максимальное общее количество "бездействующих" (idle) соединений в пуле ко всем хостам.
-			MaxIdleConnsPerHost: cfg.Workers, // Максимальное количество idle-соединений к одному конкретному хосту.
-			MaxConnsPerHost:     cfg.Workers, // Максимальное общее количество соединений к одному хосту (idle + active).
+			MaxIdleConns:        100, // Максимальное общее количество "бездействующих" (idle) соединений в пуле ко всем хостам.
+			MaxIdleConnsPerHost: 100, // Максимальное количество idle-соединений к одному конкретному хосту.
+			MaxConnsPerHost:     100, // Максимальное общее количество соединений к одному хосту (idle + active).
 
 			IdleConnTimeout: 90 * time.Second, // Таймаут на неактивные соединения
 			// DisableCompression: true, // Отключение сжатия
@@ -168,7 +168,7 @@ func post(
 	// Запускаем рабочих
 	for i := 0; i < cfg.Workers; i++ {
 		wg.Add(1)
-		go work(i, client, cfg.URL, cfg.ResponsesDir,
+		go work(cfg, i, client, cfg.URL, cfg.ResponsesDir,
 			taskChan, resultChan, &wg, log,
 			&totalRequests, &totalSuccess, &totalErrors,
 			&totalBytesSent, &totalBytesRecv,
@@ -197,6 +197,7 @@ func post(
 
 // work - конвейерный обработчик
 func work(
+	cfg *config.Config,
 	id int,
 	client *http.Client,
 	url string,
@@ -261,7 +262,7 @@ func work(
 		}
 
 		// Сохраняем ответ
-		err = saveResponse(fileName, response, responsesDir)
+		err = saveResponse(fileName, response, responsesDir, cfg.Indent)
 		totalDuration := time.Since(startTime)
 
 		if err != nil {
@@ -297,8 +298,8 @@ func work(
 }
 
 // readFile читает файл, переиспользуя буфер
-func readFile(path string, buf *[]byte) ([]byte, int64, error) {
-	file, err := os.Open(path)
+func readFile(dir string, buf *[]byte) ([]byte, int64, error) {
+	file, err := os.Open(dir)
 	if err != nil {
 		return nil, 0, fmt.Errorf("открытие файла: %v", err)
 	}
@@ -357,15 +358,22 @@ func sendRequest(client *http.Client, url string, jsonData []byte) ([]byte, int,
 	return body, resp.StatusCode, nil
 }
 
-// saveResponse сохраняет ответ в файл
-func saveResponse(fileName string, response []byte, dir string) error {
-	var formatted bytes.Buffer
-	if err := json.Indent(&formatted, response, "", "  "); err != nil { // Форматируем JSON
-		formatted.Write(response) // Если ошибка - сохраняем как есть
+// saveResponse сохраняет ответ в файл.
+func saveResponse(fileName string, response []byte, dir string, format bool) error {
+	var data []byte
+	if format {
+		var formatted bytes.Buffer
+		if err := json.Indent(&formatted, response, "", "  "); err != nil {
+			data = response // Если форматирование не удалось (возможно, response не JSON), сохраняем как есть
+		} else {
+			data = formatted.Bytes()
+		}
+	} else {
+		data = response
 	}
 
 	filePath := filepath.Join(dir, fileName)
-	return os.WriteFile(filePath, formatted.Bytes(), 0644)
+	return os.WriteFile(filePath, data, 0644)
 }
 
 // showProgress показывает прогресс в реальном времени
