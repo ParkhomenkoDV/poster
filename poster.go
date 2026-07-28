@@ -11,18 +11,19 @@ import (
 	"poster/internal/config"
 	"poster/internal/logger"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 // Result содержит результат обработки файла
 type Result struct {
-	FileName     string
-	FileSize     int64         // Размер файла запроса
-	RequestSize  int           // Размер JSON данных
-	ResponseSize int           // Размер ответа
-	Duration     time.Duration // Время обработки
-	StatusCode   int           // HTTP статус код
-	Err          error
+	FileName     string        `doc:"Имя файла"`
+	FileSize     int64         `doc:"Размер файла"`
+	RequestSize  int           `doc:"Размер JSON запроса"`
+	ResponseSize int           `doc:"Размер JSON ответа"`
+	Duration     time.Duration `doc:"Время обработки"`
+	StatusCode   int           `doc:"HTTP статус код"`
+	Err          error         `doc:"Ощибка"`
 }
 
 func main() {
@@ -79,8 +80,8 @@ func main() {
 		})
 	}
 
-	// Чтение всех запросов
-	filePaths, err := filepath.Glob(cfg.RequestsDir + "/*.json")
+	// Получение списка файлов
+	fileDirs, err := filepath.Glob(cfg.RequestsDir + "/*.json")
 	if err != nil {
 		mainLogger.Fatal("Ошибка чтения директории с запросами", map[string]interface{}{
 			"directory": cfg.RequestsDir,
@@ -88,445 +89,309 @@ func main() {
 		})
 	}
 
-	if len(filePaths) == 0 {
+	if len(fileDirs) == 0 {
 		mainLogger.Info("В папке requests не найдено JSON файлов")
 		return
 	}
 	mainLogger.Info("Найдены файлы для отправки", map[string]interface{}{
-		"count": len(filePaths),
-	})
-
-	// Ограничиваем количество одновременных горутин
-	if len(filePaths) < cfg.Workers {
-		cfg.Workers = len(filePaths)
-	}
-
-	mainLogger.Debug("Настройка воркеров", map[string]interface{}{
+		"count":   len(fileDirs),
 		"workers": cfg.Workers,
-		"files":   len(filePaths),
 	})
 
-	// Каналы для работы
-	filesChan := make(chan string, len(filePaths))
-	resultsChan := make(chan Result, len(filePaths))
-
-	// Создание HTTP клиента с таймаутом
+	// Создание HTTP клиента с пулом соединений
 	client := &http.Client{
 		Timeout: time.Duration(cfg.Timeout) * time.Second,
 		Transport: &http.Transport{
-			MaxIdleConns:        cfg.Workers * 10, // Максимальное общее количество "бездействующих" (idle) соединений в пуле ко всем хостам.
-			MaxIdleConnsPerHost: cfg.Workers * 10, // Максимальное количество idle-соединений к одному конкретному хосту.
-			MaxConnsPerHost:     cfg.Workers * 20, // Максимальное общее количество соединений к одному хосту (idle + active).
+			MaxIdleConns:        cfg.Workers, // Максимальное общее количество "бездействующих" (idle) соединений в пуле ко всем хостам.
+			MaxIdleConnsPerHost: cfg.Workers, // Максимальное количество idle-соединений к одному конкретному хосту.
+			MaxConnsPerHost:     cfg.Workers, // Максимальное общее количество соединений к одному хосту (idle + active).
 
-			IdleConnTimeout: time.Duration(cfg.Timeout*3) * time.Second, // Таймаут на неактивные соединения
+			IdleConnTimeout: 90 * time.Second, // Таймаут на неактивные соединения
+			// DisableCompression: true, // Отключение сжатия
 		},
 	}
 
-	// Запускаем воркеров
-	var wg sync.WaitGroup
-	workerLogger := mainLogger.WithFields(map[string]interface{}{
-		"component": "worker",
-	})
+	// Запускаем обработку
+	startTime := time.Now()
+	results := post(fileDirs, cfg, client, mainLogger)
+	totalDuration := time.Since(startTime)
+
+	// Считаем статистику
+	successCount, errorCount := 0, 0
+	for _, result := range results {
+		if result.Err != nil {
+			errorCount++
+			fmt.Printf("❌ %s: %v\n", result.FileName, result.Err)
+		} else {
+			successCount++
+			fmt.Printf("✅ %s: %d [%dms]\n",
+				result.FileName,
+				result.StatusCode,
+				result.Duration.Milliseconds())
+		}
+	}
+
+	fmt.Printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("📊 ИТОГО: Успешно %d | Ошибок %d | Всего %d\n", successCount, errorCount, len(fileDirs))
+	fmt.Printf("⏱️  Общее время: %v\n", totalDuration.Round(time.Millisecond))
+	fmt.Printf("⚡ Скорость: %.2f файлов/сек\n", float64(len(fileDirs))/totalDuration.Seconds())
+}
+
+// post запускает конвейерную обработку
+func post(
+	fileDirs []string,
+	cfg *config.Config,
+	client *http.Client,
+	log *logger.Logger,
+) []Result {
+	taskChan := make(chan string, len(fileDirs))   // канал задач
+	resultChan := make(chan Result, len(fileDirs)) // Канал результатов
+
+	// Заполняем очередь задач
+	for _, dir := range fileDirs {
+		taskChan <- dir
+	}
+	close(taskChan) // Закрываем, чтобы воркеры знали что задач больше нет
+
+	var wg sync.WaitGroup // Счётчик рабочих
+
+	// Атомарная статистика
+	var (
+		totalRequests   int64
+		totalSuccess    int64
+		totalErrors     int64
+		totalBytesSent  int64
+		totalBytesRecv  int64
+		totalDurationNs int64
+	)
+
+	// Запускаем рабочих
 	for i := 0; i < cfg.Workers; i++ {
 		wg.Add(1)
-		go work(i, client, cfg.URL, cfg.ResponsesDir, filesChan, resultsChan, &wg, workerLogger)
+		go work(i, client, cfg.URL, cfg.ResponsesDir,
+			taskChan, resultChan, &wg, log,
+			&totalRequests, &totalSuccess, &totalErrors,
+			&totalBytesSent, &totalBytesRecv,
+			&totalDurationNs)
 	}
 
-	// Отправляем задачи в канал
-	for _, filePath := range filePaths {
-		filesChan <- filePath
-	}
-	close(filesChan)
-	mainLogger.Debug("Все задачи отправлены в канал")
+	// Горутина прогресса
+	progressDone := make(chan struct{})
+	go showProgress(&totalRequests, &totalSuccess, &totalErrors, len(fileDirs), progressDone)
 
-	// Ждем завершения воркеров
+	// Ждём окончания смены
 	go func() {
 		wg.Wait()
-		close(resultsChan)
-		mainLogger.Debug("Все воркеры завершили работу")
+		close(resultChan)
+		close(progressDone)
 	}()
 
 	// Собираем результаты
-	successCount, errorCount := 0, 0
-	for result := range resultsChan {
-		if result.Err != nil {
-			errorCount++
-			fmt.Printf("Ошибка обработки файла %s: %v\n", result.FileName, result.Err)
-		} else {
-			successCount++
-		}
+	results := make([]Result, 0, len(fileDirs))
+	for result := range resultChan {
+		results = append(results, result)
 	}
-	fmt.Printf("\nОбработка завершена! Успешно: %d, Ошибок: %d\n", successCount, errorCount)
+
+	return results
 }
 
-// work обрабатывает файлы из канала
-func work(id int, client *http.Client, url, responsesDir string,
-	filesChan <-chan string, resultsChan chan<- Result, wg *sync.WaitGroup,
-	log *logger.Logger) {
+// work - конвейерный обработчик
+func work(
+	id int,
+	client *http.Client,
+	url string,
+	responsesDir string,
+	taskChan <-chan string,
+	resultChan chan<- Result,
+	wg *sync.WaitGroup,
+	log *logger.Logger,
+	totalRequests, totalSuccess, totalErrors *int64,
+	totalBytesSent, totalBytesRecv, totalDurationNs *int64,
+) {
 	defer wg.Done()
 
-	workerLogger := log.WithFields(map[string]interface{}{
-		"worker_id": id,
-	})
+	// Локальный буфер для чтения файлов (переиспользуем)
+	buf := make([]byte, 0, 1024*1024) // 1MB начальный размер
 
-	workerLogger.Debug("Воркер запущен")
-
-	done := 0
-	for filePath := range filesChan {
-		done++
+	for filePath := range taskChan {
 		fileName := filepath.Base(filePath)
-
 		startTime := time.Now()
-		workerLogger.Debug("Начало обработки файла", map[string]interface{}{
-			"file":  fileName,
-			"done":  done,
-			"start": startTime.Format(time.RFC3339),
-		})
 
-		// Чтение JSON файла
-		jsonData, err := os.ReadFile(filePath)
+		// ━━━ Шаг 1: Читаем файл ━━━
+		jsonData, fileSize, err := readFile(filePath, &buf)
 		if err != nil {
-			workerLogger.Error("Ошибка чтения файла", map[string]interface{}{
-				"file":  fileName,
-				"error": err.Error(),
-			})
-			resultsChan <- Result{
+			resultChan <- Result{
 				FileName: fileName,
 				Duration: time.Since(startTime),
-				Err:      fmt.Errorf("чтение файла: %v", err),
+				Err:      err,
 			}
+			atomic.AddInt64(totalErrors, 1)
+			atomic.AddInt64(totalRequests, 1)
 			continue
 		}
 
-		// Получаем размер файла
-		fileInfo, _ := os.Stat(filePath)
-		fileSize := int64(0)
-		if fileInfo != nil {
-			fileSize = fileInfo.Size()
-		}
-
-		// Проверка валидности JSON
+		// ━━━ Шаг 2: Валидируем JSON ━━━
 		if !json.Valid(jsonData) {
-			workerLogger.Error("Невалидный JSON", map[string]interface{}{
-				"file":      fileName,
-				"file_size": fileSize,
-			})
-			resultsChan <- Result{
+			resultChan <- Result{
 				FileName:    fileName,
 				FileSize:    fileSize,
 				RequestSize: len(jsonData),
 				Duration:    time.Since(startTime),
 				Err:         fmt.Errorf("невалидный JSON"),
 			}
+			atomic.AddInt64(totalErrors, 1)
+			atomic.AddInt64(totalRequests, 1)
 			continue
 		}
 
-		workerLogger.Debug("JSON файл прочитан", map[string]interface{}{
-			"file":      fileName,
-			"file_size": fileSize,
-			"json_size": len(jsonData),
-		})
-
-		// Отправка запроса на сервер
-		response, statusCode, err := sendRequest(client, url, jsonData, workerLogger)
-		requestDuration := time.Since(startTime)
+		// ━━━ Шаг 3: Отправляем HTTP запрос ━━━
+		response, statusCode, err := sendRequest(client, url, jsonData)
 		if err != nil {
-			workerLogger.Error("Ошибка отправки запроса", map[string]interface{}{
-				"file":      fileName,
-				"duration":  requestDuration.String(),
-				"error":     err.Error(),
-				"file_size": fileSize,
-			})
-			resultsChan <- Result{
+			resultChan <- Result{
 				FileName:    fileName,
 				FileSize:    fileSize,
 				RequestSize: len(jsonData),
-				Duration:    requestDuration,
+				Duration:    time.Since(startTime),
 				StatusCode:  statusCode,
-				Err:         fmt.Errorf("отправка запроса: %v", err),
+				Err:         fmt.Errorf("отправка: %v", err),
 			}
+			atomic.AddInt64(totalErrors, 1)
+			atomic.AddInt64(totalRequests, 1)
 			continue
 		}
 
-		workerLogger.Info("Запрос успешно отправлен", map[string]interface{}{
-			"file":        fileName,
-			"duration":    requestDuration.String(),
-			"status_code": statusCode,
-			"file_size":   fileSize,
-			"resp_size":   len(response),
-		})
-
-		// Сохранение ответа
-		err = saveResponse(fileName, response, responsesDir, workerLogger)
+		// ━━━ Шаг 4: Сохраняем ответ ━━━
+		err = saveResponse(fileName, response, responsesDir)
 		totalDuration := time.Since(startTime)
 
-		// Сохранение ответа
 		if err != nil {
-			workerLogger.Error("Ошибка сохранения ответа", map[string]interface{}{
-				"file":      fileName,
-				"duration":  totalDuration.String(),
-				"error":     err.Error(),
-				"resp_size": len(response),
-			})
-			resultsChan <- Result{
+			resultChan <- Result{
 				FileName:     fileName,
 				FileSize:     fileSize,
 				RequestSize:  len(jsonData),
 				ResponseSize: len(response),
 				Duration:     totalDuration,
 				StatusCode:   statusCode,
-				Err:          fmt.Errorf("сохранение ответа: %v", err),
+				Err:          fmt.Errorf("сохранение: %v", err),
 			}
-			continue
+			atomic.AddInt64(totalErrors, 1)
+		} else {
+			resultChan <- Result{
+				FileName:     fileName,
+				FileSize:     fileSize,
+				RequestSize:  len(jsonData),
+				ResponseSize: len(response),
+				Duration:     totalDuration,
+				StatusCode:   statusCode,
+				Err:          nil,
+			}
+			atomic.AddInt64(totalSuccess, 1)
 		}
 
-		workerLogger.Info("Ответ успешно сохранен", map[string]interface{}{
-			"file":         fileName,
-			"total_time":   totalDuration.String(),
-			"request_time": requestDuration.String(),
-			"save_time":    (totalDuration - requestDuration).String(),
-			"status_code":  statusCode,
-			"file_size":    fileSize,
-			"req_size":     len(jsonData),
-			"resp_size":    len(response),
-		})
-
-		resultsChan <- Result{
-			FileName:     fileName,
-			FileSize:     fileSize,
-			RequestSize:  len(jsonData),
-			ResponseSize: len(response),
-			Duration:     totalDuration,
-			StatusCode:   statusCode,
-			Err:          nil,
-		}
+		// Обновляем статистику
+		atomic.AddInt64(totalRequests, 1)
+		atomic.AddInt64(totalBytesSent, int64(len(jsonData)))
+		atomic.AddInt64(totalBytesRecv, int64(len(response)))
+		atomic.AddInt64(totalDurationNs, int64(totalDuration))
 	}
-
-	workerLogger.Debug("Воркер завершен", map[string]interface{}{
-		"done": done,
-	})
 }
 
-// sendRequest отправляет JSON на сервер (без изменений)
-func sendRequest(client *http.Client, url string, jsonData []byte, log *logger.Logger) ([]byte, int, error) {
-	// Создание POST запроса
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(jsonData))
+// readFile читает файл, переиспользуя буфер
+func readFile(path string, buf *[]byte) ([]byte, int64, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, 0, fmt.Errorf("открытие файла: %v", err)
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, 0, fmt.Errorf("получение размера: %v", err)
+	}
+
+	fileSize := stat.Size()
+
+	// Расширяем буфер если нужно
+	if cap(*buf) < int(fileSize) {
+		*buf = make([]byte, fileSize*2) // Увеличиваем с запасом
+	}
+
+	// Читаем в пред-выделенный буфер
+	data := (*buf)[:fileSize]
+	n, err := io.ReadFull(file, data)
+	if err != nil {
+		return nil, 0, fmt.Errorf("чтение: %v", err)
+	}
+
+	return data[:n], fileSize, nil
+}
+
+// sendRequest отправляет HTTP запрос и возвращает ответ
+func sendRequest(client *http.Client, url string, jsonData []byte) ([]byte, int, error) {
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// Установка заголовков
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Connection", "keep-alive") // Переиспользуем соединения
+	req.Close = false                          // Не закрываем соединение после запроса
 
-	log.Debug("Отправка HTTP запроса", map[string]interface{}{
-		"url":          url,
-		"method":       req.Method,
-		"content_type": req.Header.Get("Content-Type"),
-		"data_size":    len(jsonData),
-		"timestamp":    time.Now().Format(time.RFC3339Nano),
-	})
-
-	start := time.Now()
-	resp, err := client.Do(req) // Выполнение запроса
-	duration := time.Since(start)
-
+	resp, err := client.Do(req)
 	if err != nil {
-		log.Error("HTTP запрос не удался", map[string]interface{}{
-			"duration":    duration.String(),
-			"duration_ms": duration.Milliseconds(),
-			"error":       err.Error(),
-			"url":         url,
-		})
 		return nil, 0, err
 	}
 	defer resp.Body.Close()
 
-	// Чтение ответа
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Error("Ошибка чтения ответа", map[string]interface{}{
-			"duration":     duration.String(),
-			"status_code":  resp.StatusCode,
-			"error":        err.Error(),
-			"url":          url,
-			"content_type": resp.Header.Get("Content-Type"),
-		})
 		return nil, resp.StatusCode, err
 	}
 
-	// Логируем получение ответа
-	log.Warn("Получен HTTP ответ", map[string]interface{}{
-		"duration":       duration.String(),
-		"duration_ms":    duration.Milliseconds(),
-		"status_code":    resp.StatusCode,
-		"response_size":  len(body),
-		"url":            url,
-		"content_type":   resp.Header.Get("Content-Type"),
-		"content_length": resp.Header.Get("Content-Length"),
-		"server":         resp.Header.Get("Server"),
-		"date":           resp.Header.Get("Date"),
-	})
-
-	log.Debug("Получен HTTP ответ", map[string]interface{}{
-		"duration":    duration.String(),
-		"status_code": resp.StatusCode,
-		"size":        len(body),
-		"headers":     resp.Header,
-	})
-
+	// Проверяем статус
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		log.Warn("Сервер вернул ошибку", map[string]interface{}{
-			"status_code":  resp.StatusCode,
-			"body_preview": string(body[:min(200, len(body))]),
-		})
-		return body, resp.StatusCode, fmt.Errorf("сервер вернул статус: %d", resp.StatusCode)
+		return body, resp.StatusCode,
+			fmt.Errorf("статус: %d", resp.StatusCode)
 	}
 
 	return body, resp.StatusCode, nil
 }
 
-// saveResponse сохраняет ответ директорию
-func saveResponse(fileName string, response []byte, path string, log *logger.Logger) error {
-	startTime := time.Now()
-
-	log.Debug("Начало сохранения ответа", map[string]interface{}{
-		"file_name":     fileName,
-		"response_size": len(response),
-		"target_dir":    path,
-		"start_time":    startTime.Format(time.RFC3339Nano),
-	})
-
-	// Форматирование JSON для красивого вывода
-	var formattedJSON bytes.Buffer
-	formatStart := time.Now()
-	if err := json.Indent(&formattedJSON, response, "", "  "); err != nil {
-		log.Warn("Не удалось отформатировать JSON, сохраняем как есть", map[string]interface{}{
-			"file_name": fileName,
-			"error":     err.Error(),
-			"warning":   "response might not be valid JSON",
-		})
-		formattedJSON.Write(response) // Если JSON невалидный, сохраняем как есть
-	}
-	formatDuration := time.Since(formatStart)
-
-	// Определяем полный путь к файлу
-	filePath := filepath.Join(path, fileName)
-
-	log.Debug("Подготовка к записи файла", map[string]interface{}{
-		"file_name":         fileName,
-		"full_path":         filePath,
-		"original_size":     len(response),
-		"formatted_size":    formattedJSON.Len(),
-		"format_time_ms":    formatDuration.Milliseconds(),
-		"compression_ratio": fmt.Sprintf("%.2f%%", float64(formattedJSON.Len())*100/float64(len(response))),
-	})
-
-	// Записываем файл
-	writeStart := time.Now()
-	if err := os.WriteFile(filePath, formattedJSON.Bytes(), 0644); err != nil {
-		log.Error("Ошибка записи файла", map[string]interface{}{
-			"file_path":     filePath,
-			"file_size":     formattedJSON.Len(),
-			"error":         err.Error(),
-			"write_time_ms": time.Since(writeStart).Milliseconds(),
-			"total_time_ms": time.Since(startTime).Milliseconds(),
-			"permissions":   "0644",
-		})
-		return fmt.Errorf("запись файла %s: %v", filePath, err)
+// saveResponse сохраняет ответ в файл
+func saveResponse(fileName string, response []byte, dir string) error {
+	var formatted bytes.Buffer
+	if err := json.Indent(&formatted, response, "", "  "); err != nil { // Форматируем JSON
+		formatted.Write(response) // Если ошибка - сохраняем как есть
 	}
 
-	return nil
+	filePath := filepath.Join(dir, fileName)
+	return os.WriteFile(filePath, formatted.Bytes(), 0644)
 }
 
-func statistic(resultsChan <-chan Result, log *logger.Logger) {
-	// Собираем результаты с расширенной статистикой
-	successCount, errorCount := 0, 0
-	var totalDuration time.Duration
-	var totalFileSize int64
-	var totalRequestSize int
-	var totalResponseSize int
-	statusCodeStats := make(map[int]int)
-	durationStats := struct {
-		min time.Duration
-		max time.Duration
-		sum time.Duration
-	}{min: time.Hour} // Инициализируем большим значением
+// showProgress показывает прогресс в реальном времени
+func showProgress(
+	totalRequests, totalSuccess, totalErrors *int64,
+	total int,
+	done chan struct{},
+) {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
 
-	for result := range resultsChan {
-		if result.Err != nil {
-			errorCount++
-			log.Error("Ошибка обработки файла", map[string]interface{}{
-				"file_name":     result.FileName,
-				"error":         result.Err.Error(),
-				"duration_ms":   result.Duration.Milliseconds(),
-				"status_code":   result.StatusCode,
-				"file_size":     result.FileSize,
-				"request_size":  result.RequestSize,
-				"response_size": result.ResponseSize,
-			})
-		} else {
-			successCount++
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			req := atomic.LoadInt64(totalRequests)
+			succ := atomic.LoadInt64(totalSuccess)
+			errs := atomic.LoadInt64(totalErrors)
 
-			// Обновляем статистику
-			totalDuration += result.Duration
-			totalFileSize += result.FileSize
-			totalRequestSize += result.RequestSize
-			totalResponseSize += result.ResponseSize
-
-			// Статистика по статус кодам
-			if result.StatusCode > 0 {
-				statusCodeStats[result.StatusCode]++
+			if req > 0 {
+				percent := float64(req) * 100 / float64(total)
+				fmt.Printf("\r⏳ Прогресс: %d/%d (%.1f%%) | ✅ %d | ❌ %d",
+					req, total, percent, succ, errs)
 			}
-
-			// Минимальное/максимальное время
-			if result.Duration < durationStats.min {
-				durationStats.min = result.Duration
-			}
-			if result.Duration > durationStats.max {
-				durationStats.max = result.Duration
-			}
-			durationStats.sum += result.Duration
-
-			log.Info("Файл успешно обработан", map[string]interface{}{
-				"file_name":     result.FileName,
-				"duration_ms":   result.Duration.Milliseconds(),
-				"status_code":   result.StatusCode,
-				"file_size":     result.FileSize,
-				"request_size":  result.RequestSize,
-				"response_size": result.ResponseSize,
-				"success":       true,
-			})
 		}
 	}
-
-	// Выводим итоговую статистику
-	if successCount > 0 {
-		avgDuration := durationStats.sum / time.Duration(successCount)
-		log.Info("Статистика обработки файлов", map[string]interface{}{
-			"total_files":              successCount + errorCount,
-			"successful":               successCount,
-			"failed":                   errorCount,
-			"success_rate":             fmt.Sprintf("%.2f%%", float64(successCount)*100/float64(successCount+errorCount)),
-			"total_duration_sec":       totalDuration.Seconds(),
-			"avg_duration_ms":          avgDuration.Milliseconds(),
-			"min_duration_ms":          durationStats.min.Milliseconds(),
-			"max_duration_ms":          durationStats.max.Milliseconds(),
-			"total_file_size_mb":       fmt.Sprintf("%.2f MB", float64(totalFileSize)/(1024*1024)),
-			"total_request_size_mb":    fmt.Sprintf("%.2f MB", float64(totalRequestSize)/(1024*1024)),
-			"total_response_size_mb":   fmt.Sprintf("%.2f MB", float64(totalResponseSize)/(1024*1024)),
-			"avg_file_size_kb":         fmt.Sprintf("%.2f KB", float64(totalFileSize)/float64(successCount)/1024),
-			"avg_request_size_kb":      fmt.Sprintf("%.2f KB", float64(totalRequestSize)/float64(successCount)/1024),
-			"avg_response_size_kb":     fmt.Sprintf("%.2f KB", float64(totalResponseSize)/float64(successCount)/1024),
-			"throughput_files_per_sec": fmt.Sprintf("%.2f", float64(successCount)/totalDuration.Seconds()),
-			"status_codes":             statusCodeStats,
-		})
-	}
-
-	log.Info("Обработка завершена", map[string]interface{}{
-		"successful": successCount,
-		"failed":     errorCount,
-		"total":      successCount + errorCount,
-		"duration":   totalDuration.String(),
-	})
 }
