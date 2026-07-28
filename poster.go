@@ -131,7 +131,7 @@ func main() {
 		}
 	}
 
-	fmt.Printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Println()
 	fmt.Printf("📊 ИТОГО: Успешно %d | Ошибок %d | Всего %d\n", successCount, errorCount, len(fileDirs))
 	fmt.Printf("⏱️  Общее время: %v\n", totalDuration.Round(time.Millisecond))
 	fmt.Printf("⚡ Скорость: %.2f файлов/сек\n", float64(len(fileDirs))/totalDuration.Seconds())
@@ -217,7 +217,7 @@ func work(
 		fileName := filepath.Base(filePath)
 		startTime := time.Now()
 
-		// ━━━ Шаг 1: Читаем файл ━━━
+		// Читаем файл
 		jsonData, fileSize, err := readFile(filePath, &buf)
 		if err != nil {
 			resultChan <- Result{
@@ -230,7 +230,7 @@ func work(
 			continue
 		}
 
-		// ━━━ Шаг 2: Валидируем JSON ━━━
+		// Валидируем JSON
 		if !json.Valid(jsonData) {
 			resultChan <- Result{
 				FileName:    fileName,
@@ -244,7 +244,7 @@ func work(
 			continue
 		}
 
-		// ━━━ Шаг 3: Отправляем HTTP запрос ━━━
+		// Отправляем HTTP запрос
 		response, statusCode, err := sendRequest(client, url, jsonData)
 		if err != nil {
 			resultChan <- Result{
@@ -260,7 +260,7 @@ func work(
 			continue
 		}
 
-		// ━━━ Шаг 4: Сохраняем ответ ━━━
+		// Сохраняем ответ
 		err = saveResponse(fileName, response, responsesDir)
 		totalDuration := time.Since(startTime)
 
@@ -351,8 +351,7 @@ func sendRequest(client *http.Client, url string, jsonData []byte) ([]byte, int,
 
 	// Проверяем статус
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return body, resp.StatusCode,
-			fmt.Errorf("статус: %d", resp.StatusCode)
+		return body, resp.StatusCode, fmt.Errorf("статус: %d", resp.StatusCode)
 	}
 
 	return body, resp.StatusCode, nil
