@@ -172,11 +172,11 @@ func post(
 	// Запускаем рабочих
 	for i := 0; i < cfg.Workers; i++ {
 		wg.Add(1)
-		go work(cfg, i, client, cfg.URL, cfg.ResponsesDir,
+		go work(i, client, cfg.URL, cfg.ResponsesDir, cfg.Indent,
 			taskChan, resultChan, &wg, log,
-			&totalRequests, &totalSuccess, &totalErrors,
-			&totalBytesSent, &totalBytesRecv,
-			&totalDurationNs)
+			&totalRequests, &totalSuccess, &totalErrors, // счетчики
+			&totalBytesSent, &totalBytesRecv, // байтики
+			&totalDurationNs) // время
 	}
 
 	// Горутина прогресса
@@ -201,11 +201,11 @@ func post(
 
 // work - конвейерный обработчик
 func work(
-	cfg *config.Config,
 	id int,
 	client *http.Client,
 	url string,
 	responsesDir string,
+	format bool,
 	taskChan <-chan string,
 	resultChan chan<- Result,
 	wg *sync.WaitGroup,
@@ -266,7 +266,7 @@ func work(
 		}
 
 		// Сохраняем ответ
-		err = saveResponse(fileName, response, responsesDir, cfg.Indent)
+		err = saveResponse(fileName, response, responsesDir, format)
 		totalDuration := time.Since(startTime)
 
 		if err != nil {
