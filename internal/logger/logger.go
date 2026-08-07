@@ -132,14 +132,6 @@ func (l *Logger) log(level Level, msg string, fields map[string]interface{}) {
 		return
 	}
 
-	// Проверяем, есть ли output
-	l.mu.Lock()
-	output := l.output
-	l.mu.Unlock()
-	if output == nil {
-		return
-	}
-
 	// Получаем информацию о caller
 	pc, file, line, ok := runtime.Caller(2)
 	var funcName string
@@ -178,6 +170,11 @@ func (l *Logger) log(level Level, msg string, fields map[string]interface{}) {
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
+	// Проверяем, есть ли output
+	if l.output == nil {
+		return
+	}
 
 	data, err := json.Marshal(entry)
 	if err != nil {

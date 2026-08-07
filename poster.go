@@ -2,16 +2,19 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"poster/internal/config"
 	"poster/internal/logger"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -30,14 +33,14 @@ func main() {
 	cfg, err := config.New()
 	if err != nil {
 		fmt.Printf("Ошибка конфигурации %+v: %v", cfg, err)
-		return
+		os.Exit(1)
 	}
 
 	// Создание логгера
 	mainLogger, err := logger.New(cfg.Log, "log.json")
 	if err != nil {
 		fmt.Printf("Ошибка инициализации логгера: %v\n", err)
-		return
+		os.Exit(1)
 	}
 	defer mainLogger.Info("Приложение завершено")
 
@@ -60,6 +63,7 @@ func main() {
 			"responses_dir": cfg.ResponsesDir,
 			"timeout":       cfg.Timeout,
 			"workers":       cfg.Workers,
+			"indent":        cfg.Indent,
 			"level":         cfg.Log,
 			"file":          "log.json",
 		},
@@ -98,6 +102,23 @@ func main() {
 		"workers": cfg.Workers,
 	})
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		select {
+		case sig := <-sigChan:
+			mainLogger.Warn("Signal received, shutting down gracefully", map[string]interface{}{
+				"signal": sig.String(),
+			})
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
 	// Создание HTTP клиента с пулом соединений
 	client := &http.Client{
 		Timeout: time.Duration(cfg.Timeout) * time.Second,
@@ -106,14 +127,16 @@ func main() {
 			MaxIdleConnsPerHost: 100, // Максимальное количество idle-соединений к одному конкретному хосту.
 			MaxConnsPerHost:     100, // Максимальное общее количество соединений к одному хосту (idle + active).
 
-			IdleConnTimeout: 90 * time.Second, // Таймаут на неактивные соединения
+			IdleConnTimeout:       90 * time.Second, // Таймаут на неактивные соединения
+			ResponseHeaderTimeout: 30 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
 			// DisableCompression: true, // Отключение сжатия
 		},
 	}
 
 	// Запускаем обработку
 	startTime := time.Now()
-	results := post(cfg, fileDirs, client, mainLogger)
+	results := post(cfg, ctx, fileDirs, client, mainLogger)
 	totalDuration := time.Since(startTime)
 
 	// Считаем статистику
@@ -144,6 +167,7 @@ func main() {
 // post запускает конвейерную обработку
 func post(
 	cfg *config.Config,
+	ctx context.Context,
 	fileDirs []string,
 	client *http.Client,
 	log *logger.Logger,
@@ -161,22 +185,17 @@ func post(
 
 	// Атомарная статистика
 	var (
-		totalRequests   int64
-		totalSuccess    int64
-		totalErrors     int64
-		totalBytesSent  int64
-		totalBytesRecv  int64
-		totalDurationNs int64
+		totalRequests int64
+		totalSuccess  int64
+		totalErrors   int64
 	)
 
 	// Запускаем рабочих
 	for i := 0; i < cfg.Workers; i++ {
 		wg.Add(1)
-		go work(i, client, cfg.URL, cfg.ResponsesDir, cfg.Indent,
+		go work(i, ctx, client, cfg.URL, cfg.ResponsesDir, cfg.Indent,
 			taskChan, resultChan, &wg, log,
-			&totalRequests, &totalSuccess, &totalErrors, // счетчики
-			&totalBytesSent, &totalBytesRecv, // байтики
-			&totalDurationNs) // время
+			&totalRequests, &totalSuccess, &totalErrors) // счетчики
 	}
 
 	// Горутина прогресса
@@ -202,6 +221,7 @@ func post(
 // work - конвейерный обработчик
 func work(
 	id int,
+	ctx context.Context,
 	client *http.Client,
 	url string,
 	responsesDir string,
@@ -211,7 +231,6 @@ func work(
 	wg *sync.WaitGroup,
 	log *logger.Logger,
 	totalRequests, totalSuccess, totalErrors *int64,
-	totalBytesSent, totalBytesRecv, totalDurationNs *int64,
 ) {
 	defer wg.Done()
 
@@ -219,6 +238,18 @@ func work(
 	buf := make([]byte, 0, 1024*1024) // 1MB начальный размер
 
 	for fileDir := range taskChan {
+		select {
+		case <-ctx.Done():
+			resultChan <- Result{
+				FileName: filepath.Base(fileDir),
+				Err:      ctx.Err(),
+			}
+			atomic.AddInt64(totalErrors, 1)
+			atomic.AddInt64(totalRequests, 1)
+			continue
+		default:
+		}
+
 		fileName := filepath.Base(fileDir)
 		startTime := time.Now()
 
@@ -242,7 +273,8 @@ func work(
 				FileSize:    fileSize,
 				RequestSize: len(jsonData),
 				Duration:    time.Since(startTime),
-				Err:         fmt.Errorf("невалидный JSON"),
+				Err:         fmt.Errorf("invalid JSON"),
+				StatusCode:  0,
 			}
 			atomic.AddInt64(totalErrors, 1)
 			atomic.AddInt64(totalRequests, 1)
@@ -250,15 +282,16 @@ func work(
 		}
 
 		// Отправляем HTTP запрос
-		response, statusCode, err := sendRequest(client, url, jsonData)
+		response, statusCode, err := sendRequest(ctx, client, url, jsonData)
 		if err != nil {
 			resultChan <- Result{
-				FileName:    fileName,
-				FileSize:    fileSize,
-				RequestSize: len(jsonData),
-				Duration:    time.Since(startTime),
-				StatusCode:  statusCode,
-				Err:         fmt.Errorf("отправка: %v", err),
+				FileName:     fileName,
+				FileSize:     fileSize,
+				RequestSize:  len(jsonData),
+				ResponseSize: 0,
+				Duration:     time.Since(startTime),
+				StatusCode:   statusCode,
+				Err:          fmt.Errorf("отправка: %v", err),
 			}
 			atomic.AddInt64(totalErrors, 1)
 			atomic.AddInt64(totalRequests, 1)
@@ -266,10 +299,9 @@ func work(
 		}
 
 		// Сохраняем ответ
-		err = saveResponse(fileName, response, responsesDir, format)
+		saveErr := saveResponse(fileName, response, responsesDir, format)
 		totalDuration := time.Since(startTime)
-
-		if err != nil {
+		if saveErr != nil {
 			resultChan <- Result{
 				FileName:     fileName,
 				FileSize:     fileSize,
@@ -277,7 +309,7 @@ func work(
 				ResponseSize: len(response),
 				Duration:     totalDuration,
 				StatusCode:   statusCode,
-				Err:          fmt.Errorf("сохранение: %v", err),
+				Err:          fmt.Errorf("saving response: %v", err),
 			}
 			atomic.AddInt64(totalErrors, 1)
 		} else {
@@ -295,9 +327,6 @@ func work(
 
 		// Обновляем статистику
 		atomic.AddInt64(totalRequests, 1)
-		atomic.AddInt64(totalBytesSent, int64(len(jsonData)))
-		atomic.AddInt64(totalBytesRecv, int64(len(response)))
-		atomic.AddInt64(totalDurationNs, int64(totalDuration))
 	}
 }
 
@@ -305,13 +334,13 @@ func work(
 func readFile(dir string, buf *[]byte) ([]byte, int64, error) {
 	file, err := os.Open(dir)
 	if err != nil {
-		return nil, 0, fmt.Errorf("открытие файла: %v", err)
+		return nil, 0, fmt.Errorf("oppening file: %v", err)
 	}
 	defer file.Close()
 
 	stat, err := file.Stat()
 	if err != nil {
-		return nil, 0, fmt.Errorf("получение размера: %v", err)
+		return nil, 0, fmt.Errorf("getting file info: %v", err)
 	}
 
 	fileSize := stat.Size()
@@ -325,15 +354,15 @@ func readFile(dir string, buf *[]byte) ([]byte, int64, error) {
 	data := (*buf)[:fileSize]
 	n, err := io.ReadFull(file, data)
 	if err != nil {
-		return nil, 0, fmt.Errorf("чтение: %v", err)
+		return nil, 0, fmt.Errorf("reading file: %v", err)
 	}
 
 	return data[:n], fileSize, nil
 }
 
 // sendRequest отправляет HTTP запрос и возвращает ответ
-func sendRequest(client *http.Client, url string, jsonData []byte) ([]byte, int, error) {
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(jsonData))
+func sendRequest(ctx context.Context, client *http.Client, url string, jsonData []byte) ([]byte, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -356,7 +385,7 @@ func sendRequest(client *http.Client, url string, jsonData []byte) ([]byte, int,
 
 	// Проверяем статус
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return body, resp.StatusCode, fmt.Errorf("статус: %d", resp.StatusCode)
+		return body, resp.StatusCode, fmt.Errorf("HTTP status: %d", resp.StatusCode)
 	}
 
 	return body, resp.StatusCode, nil
@@ -400,7 +429,7 @@ func showProgress(
 
 			if req > 0 {
 				percent := float64(req) * 100 / float64(total)
-				fmt.Printf("\r⏳ Прогресс: %d/%d (%.1f%%) | ✅ %d | ❌ %d",
+				fmt.Printf("\r⏳ Progress: %d/%d (%.1f%%) | ✅ %d | ❌ %d",
 					req, total, percent, succ, errs)
 			}
 		}

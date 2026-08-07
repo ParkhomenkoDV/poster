@@ -7,7 +7,7 @@ import (
 	"slices"
 )
 
-const usage = "Использование: go run poster.go [-url=<URL>] [-requests=<имяДиректории>] [-responses=<имяДиректории>] [-indent] [-timeout=N] [-workers=N] [-log=S]"
+const usage = "Usage: go run poster.go [-url=<URL>] [-requests=<dir>] [-responses=<dir>] [-indent] [-timeout=N] [-workers=N] [-log=<level>]"
 
 type Flags struct {
 	URL          string `doc:"Адрес сервера"`
@@ -22,36 +22,36 @@ type Flags struct {
 func parse() (*Flags, error) {
 	numCPU := runtime.NumCPU()
 
-	url := flag.String("url", "http://localhost:8080/execute", "Адрес сервера")
+	url := flag.String("url", "http://localhost:8080/execute", "Server address")
 	requestsDir := flag.String("requests", "requests", "Директория с запросами json")
 	responsesDir := flag.String("responses", "responses", "Директория с ответами json")
-	indent := flag.Bool("indent", false, "Форматирование ответ")
-	timeout := flag.Int("timeout", 10, "Max время для ответа")
-	workers := flag.Int("workers", numCPU, "Количество параллельных работников")
-	log := flag.String("log", "", "Уровень логирования ('', 'stdout', 'debug', 'info', 'warn', 'error')")
+	indent := flag.Bool("indent", false, "Format response")
+	timeout := flag.Int("timeout", 10, "Max response timeout in seconds")
+	workers := flag.Int("workers", numCPU, "Number of parallel workers")
+	log := flag.String("log", "", "Log level ('', 'stdout', 'debug', 'info', 'warn', 'error')")
 
 	flag.Parse()
 
 	if *requestsDir == "" {
 		fmt.Println(usage)
-		return &Flags{}, fmt.Errorf("пустая директория запросов: %s", *requestsDir)
+		return &Flags{}, fmt.Errorf("empty requests directory: %s", *requestsDir)
 	}
 	if *responsesDir == "" {
 		fmt.Println(usage)
-		return &Flags{}, fmt.Errorf("пустая директория ответов: %s", *responsesDir)
+		return &Flags{}, fmt.Errorf("empty responses directory: %s", *responsesDir)
 	}
 	if *timeout <= 0 {
 		fmt.Println(usage)
-		return &Flags{}, fmt.Errorf("timeout=%v должен быть > 0", *timeout)
+		return &Flags{}, fmt.Errorf("timeout=%v must be > 0", *timeout)
 	}
 	if *workers < 1 || numCPU < *workers {
 		fmt.Println(usage)
-		return &Flags{}, fmt.Errorf("workers=%v должен быть в диапазоне [1..%v]", *workers, numCPU)
+		return &Flags{}, fmt.Errorf("workers=%v must be in range [1..%v]", *workers, numCPU)
 	}
 	levels := []string{"", "stdout", "debug", "info", "warn", "error"}
 	if !slices.Contains(levels, *log) {
 		fmt.Println(usage)
-		return &Flags{}, fmt.Errorf("log=%v must be in %v", *log, levels)
+		return &Flags{}, fmt.Errorf("log=%v must be one of %v", *log, levels)
 	}
 
 	return &Flags{

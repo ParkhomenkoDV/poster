@@ -40,7 +40,7 @@ func TestNew_DefaultValues(t *testing.T) {
 		t.Errorf("ResponsesDir = %q, ожидалось %q", cfg.ResponsesDir, expectedResponsesDir)
 	}
 
-	expectedTimeout := 30
+	expectedTimeout := 10
 	if cfg.Timeout != expectedTimeout {
 		t.Errorf("Timeout = %d, ожидалось %d", cfg.Timeout, expectedTimeout)
 	}

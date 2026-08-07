@@ -13,13 +13,13 @@ vendor:
 
 test:
 	@echo "$(BLUE)Running tests...$(RESET)"
-	go test ./...
+	go test ./... -cover
 
 bench:
 	@echo "$(BLUE)Running benchmarks...$(RESET)"
-	go test -benchmem -benchtime 5s -count=5
+	go test ./... -bench=. -benchmem -benchtime 1s -count=1
 
-prof:
+pprof:
 	@echo "$(BLUE)Running profiling...$(RESET)"
 	go test -benchmem -benchtime 5s -count=5 -cpuprofile=cpu.out -memprofile=mem.out
 
