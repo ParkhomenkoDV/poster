@@ -7,16 +7,15 @@ import (
 	"slices"
 )
 
-const usage = "Usage: go run poster.go [-url=<URL>] [-requests=<dir>] [-responses=<dir>] [-indent] [-timeout=N] [-workers=N] [-log=<level>]"
+const usage = "Usage: go run poster.go [-url=<URL>] [-requests=<dir>] [-indent] [-timeout=N] [-workers=N] [-log=<level>]"
 
 type Flags struct {
-	URL          string `doc:"Адрес сервера"`
-	RequestsDir  string `doc:"Директория с запросами json"`
-	ResponsesDir string `doc:"Директория с ответами json"`
-	Indent       bool   `doc:"Форматирование ответа"`
-	Timeout      int    `doc:"Max время для ответа"`
-	Workers      int    `doc:"Количество параллельных работников"`
-	Log          string `doc:"Уровень логирования"`
+	URL         string `doc:"Адрес сервера"`
+	RequestsDir string `doc:"Директория с запросами json"`
+	Indent      bool   `doc:"Форматирование ответа"`
+	Timeout     int    `doc:"Max время для ответа"`
+	Workers     int    `doc:"Количество параллельных работников"`
+	Log         string `doc:"Уровень логирования"`
 }
 
 func parse() (*Flags, error) {
@@ -24,7 +23,6 @@ func parse() (*Flags, error) {
 
 	url := flag.String("url", "http://localhost:8080/execute", "Server address")
 	requestsDir := flag.String("requests", "requests", "Директория с запросами json")
-	responsesDir := flag.String("responses", "responses", "Директория с ответами json")
 	indent := flag.Bool("indent", false, "Format response")
 	timeout := flag.Int("timeout", 10, "Max response timeout in seconds")
 	workers := flag.Int("workers", numCPU, "Number of parallel workers")
@@ -35,10 +33,6 @@ func parse() (*Flags, error) {
 	if *requestsDir == "" {
 		fmt.Println(usage)
 		return &Flags{}, fmt.Errorf("empty requests directory: %s", *requestsDir)
-	}
-	if *responsesDir == "" {
-		fmt.Println(usage)
-		return &Flags{}, fmt.Errorf("empty responses directory: %s", *responsesDir)
 	}
 	if *timeout <= 0 {
 		fmt.Println(usage)
@@ -55,12 +49,11 @@ func parse() (*Flags, error) {
 	}
 
 	return &Flags{
-		URL:          *url,
-		RequestsDir:  *requestsDir,
-		ResponsesDir: *responsesDir,
-		Indent:       *indent,
-		Timeout:      *timeout,
-		Workers:      *workers,
-		Log:          *log,
+		URL:         *url,
+		RequestsDir: *requestsDir,
+		Indent:      *indent,
+		Timeout:     *timeout,
+		Workers:     *workers,
+		Log:         *log,
 	}, nil
 }

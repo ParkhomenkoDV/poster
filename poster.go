@@ -50,7 +50,7 @@ func main() {
 	lgr = lgr.WithFields(map[string]interface{}{
 		"app":       "poster",
 		"pid":       os.Getpid(),
-		"timestamp": time.Now().Format(time.RFC3339),
+		"timestamp": time.Now().Format(time.DateTime),
 	})
 
 	lgr.Info("Логгер инициализирован", map[string]interface{}{
@@ -60,14 +60,13 @@ func main() {
 
 	lgr.Info("Запуск приложения", map[string]interface{}{
 		"config": map[string]interface{}{
-			"url":           cfg.URL,
-			"requests_dir":  cfg.RequestsDir,
-			"responses_dir": cfg.ResponsesDir,
-			"timeout":       cfg.Timeout,
-			"workers":       cfg.Workers,
-			"indent":        cfg.Indent,
-			"level":         cfg.Log,
-			"file":          "log.json",
+			"url":          cfg.URL,
+			"requests_dir": cfg.RequestsDir,
+			"timeout":      cfg.Timeout,
+			"workers":      cfg.Workers,
+			"indent":       cfg.Indent,
+			"level":        cfg.Log,
+			"file":         "log.json",
 		},
 	})
 
@@ -78,10 +77,14 @@ func main() {
 		})
 	}
 
+	// Получаем родительскую директорию
+	parentDir := filepath.Dir(cfg.RequestsDir)
+
 	// Создание директории для ответов, если её нет
-	if err := os.MkdirAll(cfg.ResponsesDir, 0755); err != nil {
+	responsesDir := filepath.Join(parentDir, "responses")
+	if err := os.MkdirAll(responsesDir, 0755); err != nil {
 		lgr.Fatal("Ошибка создания директории для ответов", map[string]interface{}{
-			"directory": cfg.ResponsesDir,
+			"directory": responsesDir,
 			"error":     err.Error(),
 		})
 	}
@@ -138,7 +141,7 @@ func main() {
 
 	// Запускаем обработку
 	startTime := time.Now()
-	results := post(cfg, ctx, fileDirs, client, lgr)
+	results := post(cfg, ctx, fileDirs, responsesDir, client, lgr)
 	totalDuration := time.Since(startTime)
 
 	// Считаем статистику
@@ -171,6 +174,7 @@ func post(
 	cfg *config.Config,
 	ctx context.Context,
 	fileDirs []string,
+	responsesDir string,
 	client *http.Client,
 	log *logger.Logger,
 ) []Result {
@@ -195,7 +199,7 @@ func post(
 	// Запускаем рабочих
 	for i := 0; i < cfg.Workers; i++ {
 		wg.Add(1)
-		go work(i, ctx, client, cfg.URL, cfg.ResponsesDir, cfg.Indent,
+		go work(i, ctx, client, cfg.URL, responsesDir, cfg.Indent,
 			taskChan, resultChan, &wg, log,
 			&totalRequests, &totalSuccess, &totalErrors) // счетчики
 	}

@@ -181,7 +181,7 @@ func (l *Logger) log(level Level, msg string, fields map[string]interface{}) {
 	if err != nil {
 		// Если не можем замаршалить в JSON, пишем просто текст
 		fmt.Fprintf(l.output, "[%s] %s: %s\n",
-			entry.Timestamp.Format(time.RFC3339),
+			entry.Timestamp.Format(time.DateTime),
 			entry.Level,
 			msg)
 	} else {

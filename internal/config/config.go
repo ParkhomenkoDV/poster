@@ -1,13 +1,12 @@
 package config
 
 type Config struct {
-	URL          string `doc:"Адрес сервера"`
-	RequestsDir  string `doc:"Директория с запросами json"`
-	ResponsesDir string `doc:"Директория с ответами json"`
-	Indent       bool   `doc:"Форматирование ответа"`
-	Timeout      int    `doc:"Max время для ответа"`
-	Workers      int    `doc:"Количество параллельных работников"`
-	Log          string `doc:"Уровень логирования ('', 'stdout', 'debug', 'info', 'warn', 'error')"`
+	URL         string `doc:"Адрес сервера"`
+	RequestsDir string `doc:"Директория с запросами json"`
+	Indent      bool   `doc:"Форматирование ответа"`
+	Timeout     int    `doc:"Max время для ответа"`
+	Workers     int    `doc:"Количество параллельных работников"`
+	Log         string `doc:"Уровень логирования ('', 'stdout', 'debug', 'info', 'warn', 'error')"`
 }
 
 func New() (*Config, error) {
@@ -17,12 +16,11 @@ func New() (*Config, error) {
 	}
 
 	return &Config{
-		URL:          flags.URL,
-		RequestsDir:  flags.RequestsDir,
-		ResponsesDir: flags.ResponsesDir,
-		Indent:       flags.Indent,
-		Timeout:      flags.Timeout,
-		Workers:      flags.Workers,
-		Log:          flags.Log,
+		URL:         flags.URL,
+		RequestsDir: flags.RequestsDir,
+		Indent:      flags.Indent,
+		Timeout:     flags.Timeout,
+		Workers:     flags.Workers,
+		Log:         flags.Log,
 	}, nil
 }
