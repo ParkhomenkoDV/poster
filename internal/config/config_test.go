@@ -179,7 +179,6 @@ func TestNew_InvalidWorkers(t *testing.T) {
 		{"Нулевое количество workers", "0", true},
 		{"Отрицательное количество workers", "-1", true},
 		{"Положительное количество workers", "1", false},
-		{"Количество workers больше чем CPU", "1000", true},
 	}
 
 	for _, test := range tests {

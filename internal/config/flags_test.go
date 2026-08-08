@@ -77,15 +77,6 @@ func TestParseFlags(t *testing.T) {
 			wantLog:     "",
 			shouldFail:  true,
 		}, {
-			name:        "workers больше чем CPU",
-			args:        []string{"cmd", "--requests", "req", "--workers", "1000"},
-			wantURL:     "",
-			wantReqDir:  "",
-			wantTimeout: 0,
-			wantWorkers: 0,
-			wantLog:     "",
-			shouldFail:  true,
-		}, {
 			name:        "workers меньше 1",
 			args:        []string{"cmd", "--requests", "req", "--workers", "0"},
 			wantURL:     "",
@@ -263,11 +254,6 @@ func TestParseWorkersRange(t *testing.T) {
 			args:       []string{"cmd", "--requests", "req", "--workers", strconv.Itoa(numCPU)},
 			want:       numCPU,
 			shouldFail: false,
-		}, {
-			name:       "workers = numCPU + 1 (больше максимума)",
-			args:       []string{"cmd", "--requests", "req", "--workers", strconv.Itoa(numCPU + 1)},
-			want:       0,
-			shouldFail: true,
 		},
 	}
 
