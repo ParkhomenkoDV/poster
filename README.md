@@ -11,8 +11,8 @@
 
 ## Usage
 
-1. Положить в корень проекта `.` директорию `requests` с запросами
-2. Поднять сервер по адресу `URL`
+1. Поднять сервер по адресу `URL`
+2. Запустить Poster командой:
  
 ```bash
 go run poster.go [-url <URL>] [-requests <dir>] [-responses <dir>] [-indent] [-timeout N] [-workers N] [-log S]
@@ -21,8 +21,8 @@ go run poster.go [-url <URL>] [-requests <dir>] [-responses <dir>] [-indent] [-t
 Флаг        | Описание                           | По умолчанию
 ------------|------------------------------------|------------------------------
 `url`       | URL сервера для отправки запросов  | http://localhost:8080/execute
-`requests`  | Директория с JSON-файлами запросов | requests
-`responses` | Директория для сохранения ответов  | responses
+`requests`  | Директория с JSON-файлами запросов | ./requests
+`responses` | Директория для сохранения ответов  | ./responses
 `indent`    | Форматирование ответа              | false
 `timeout`   | Таймаут HTTP-запросов (секунды)    | 10
 `workers`   | Количество параллельных воркеров   | количетсво ядер
@@ -40,7 +40,14 @@ go build -o poster poster.go
 ## Structure
 ```
 poster/
-├── poster.go             # Основной файл программы
+├── internal/
+│   ├── config/
+│   │   └── config.go     # Конфигурация программы
+│   │   └── flags.go      # Флаги программы
+│   ├── logger/
+│   │   └── logger.go     # Логгер
+│   ├── progress/
+│   │   └── progress.go   # Прогресс бар
 ├── requests/             # Директория с запросами
 │   ├── 1.json
 │   ├── 2.json
@@ -49,12 +56,11 @@ poster/
 │   ├── 1.json
 │   ├── 2.json
 │   └── ...
-├── internal/
-│   ├── config/
-│   │   └── config.go     # Конфигурация программы
-│   │   └── flags.go      # Флаги программы
+├── vendor/               # Внешние зависисмости
 │   └── ...
 ├── go.mod                # Модуль Go
+├── Makefile              # Команды
+├── poster.go             # Основной файл программы
 └── README.md             # Документация
 ```
 
