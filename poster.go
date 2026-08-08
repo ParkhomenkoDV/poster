@@ -187,9 +187,9 @@ func post(
 
 	// Атомарная статистика
 	var (
-		totalRequests int64
-		totalSuccess  int64
-		totalErrors   int64
+		totalRequests uint64
+		totalSuccess  uint64
+		totalErrors   uint64
 	)
 
 	// Запускаем рабочих
@@ -202,7 +202,8 @@ func post(
 
 	// Горутина прогресса
 	progressDone := make(chan struct{})
-	go progress.Show(&totalRequests, &totalSuccess, &totalErrors, int64(len(fileDirs)), progressDone)
+	bar := progress.New(uint64(len(fileDirs)), time.Second, true, false, true)
+	go bar.Show(&totalRequests, &totalSuccess, &totalErrors, progressDone)
 
 	// Ждём окончания смены
 	go func() {
@@ -232,7 +233,7 @@ func work(
 	resultChan chan<- Result,
 	wg *sync.WaitGroup,
 	log *logger.Logger,
-	totalRequests, totalSuccess, totalErrors *int64,
+	totalRequests, totalSuccess, totalErrors *uint64,
 ) {
 	defer wg.Done()
 
@@ -246,8 +247,8 @@ func work(
 				FileName: filepath.Base(fileDir),
 				Err:      ctx.Err(),
 			}
-			atomic.AddInt64(totalErrors, 1)
-			atomic.AddInt64(totalRequests, 1)
+			atomic.AddUint64(totalErrors, 1)
+			atomic.AddUint64(totalRequests, 1)
 			continue
 		default:
 		}
@@ -263,8 +264,8 @@ func work(
 				Duration: time.Since(startTime),
 				Err:      err,
 			}
-			atomic.AddInt64(totalErrors, 1)
-			atomic.AddInt64(totalRequests, 1)
+			atomic.AddUint64(totalErrors, 1)
+			atomic.AddUint64(totalRequests, 1)
 			continue
 		}
 
@@ -278,8 +279,8 @@ func work(
 				Err:         fmt.Errorf("invalid JSON"),
 				StatusCode:  0,
 			}
-			atomic.AddInt64(totalErrors, 1)
-			atomic.AddInt64(totalRequests, 1)
+			atomic.AddUint64(totalErrors, 1)
+			atomic.AddUint64(totalRequests, 1)
 			continue
 		}
 
@@ -295,8 +296,8 @@ func work(
 				StatusCode:   statusCode,
 				Err:          fmt.Errorf("отправка: %v", err),
 			}
-			atomic.AddInt64(totalErrors, 1)
-			atomic.AddInt64(totalRequests, 1)
+			atomic.AddUint64(totalErrors, 1)
+			atomic.AddUint64(totalRequests, 1)
 			continue
 		}
 
@@ -313,7 +314,7 @@ func work(
 				StatusCode:   statusCode,
 				Err:          fmt.Errorf("saving response: %v", err),
 			}
-			atomic.AddInt64(totalErrors, 1)
+			atomic.AddUint64(totalErrors, 1)
 		} else {
 			resultChan <- Result{
 				FileName:     fileName,
@@ -324,11 +325,11 @@ func work(
 				StatusCode:   statusCode,
 				Err:          nil,
 			}
-			atomic.AddInt64(totalSuccess, 1)
+			atomic.AddUint64(totalSuccess, 1)
 		}
 
 		// Обновляем статистику
-		atomic.AddInt64(totalRequests, 1)
+		atomic.AddUint64(totalRequests, 1)
 	}
 }
 
