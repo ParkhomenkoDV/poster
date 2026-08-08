@@ -6,7 +6,7 @@
 
 ## Requirements
 
-- Go 1.24 или выше
+- Go 1.25 или выше
 - Сервер, принимающий POST-запросы с `Content-Type`: `application/json`
 
 ## Usage
