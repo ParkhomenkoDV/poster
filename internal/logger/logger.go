@@ -1,7 +1,6 @@
 package logger
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	json "github.com/goccy/go-json"
 )
 
 // Level = уровень логирования
@@ -216,18 +217,18 @@ func (l *Logger) Fatal(msg string, fields ...map[string]interface{}) {
 
 // mergeFields объединяет несколько мап полей
 func mergeFields(fields []map[string]interface{}) map[string]interface{} {
-	if len(fields) == 0 {
+	switch len(fields) {
+	case 0:
 		return nil
-	}
-	if len(fields) == 1 {
-		return fields[0]
-	}
-
-	result := make(map[string]interface{})
-	for _, f := range fields {
-		for k, v := range f {
-			result[k] = v
+	case 1:
+		return fields[0] // без копирования
+	default:
+		result := make(map[string]interface{})
+		for _, f := range fields {
+			for k, v := range f {
+				result[k] = v
+			}
 		}
+		return result
 	}
-	return result
 }

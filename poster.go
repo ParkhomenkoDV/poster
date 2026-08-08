@@ -10,12 +10,14 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"poster/internal/config"
-	"poster/internal/logger"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"poster/internal/config"
+	"poster/internal/logger"
+	"poster/internal/progress"
 )
 
 // Result содержит результат обработки файла
@@ -37,26 +39,26 @@ func main() {
 	}
 
 	// Создание логгера
-	mainLogger, err := logger.New(cfg.Log, "log.json")
+	lgr, err := logger.New(cfg.Log, "log.json")
 	if err != nil {
 		fmt.Printf("Ошибка инициализации логгера: %v\n", err)
 		os.Exit(1)
 	}
-	defer mainLogger.Info("Приложение завершено")
+	defer lgr.Info("Приложение завершено")
 
 	// Добавляем поля по умолчанию
-	mainLogger = mainLogger.WithFields(map[string]interface{}{
+	lgr = lgr.WithFields(map[string]interface{}{
 		"app":       "poster",
 		"pid":       os.Getpid(),
 		"timestamp": time.Now().Format(time.RFC3339),
 	})
 
-	mainLogger.Info("Логгер инициализирован", map[string]interface{}{
+	lgr.Info("Логгер инициализирован", map[string]interface{}{
 		"level": cfg.Log,
 		"file":  "log.json",
 	})
 
-	mainLogger.Info("Запуск приложения", map[string]interface{}{
+	lgr.Info("Запуск приложения", map[string]interface{}{
 		"config": map[string]interface{}{
 			"url":           cfg.URL,
 			"requests_dir":  cfg.RequestsDir,
@@ -71,14 +73,14 @@ func main() {
 
 	// Проверка наличия директории с запросами
 	if _, err := os.Stat(cfg.RequestsDir); os.IsNotExist(err) {
-		mainLogger.Fatal("Директория с запросами не существует", map[string]interface{}{
+		lgr.Fatal("Директория с запросами не существует", map[string]interface{}{
 			"directory": cfg.RequestsDir,
 		})
 	}
 
 	// Создание директории для ответов, если её нет
 	if err := os.MkdirAll(cfg.ResponsesDir, 0755); err != nil {
-		mainLogger.Fatal("Ошибка создания директории для ответов", map[string]interface{}{
+		lgr.Fatal("Ошибка создания директории для ответов", map[string]interface{}{
 			"directory": cfg.ResponsesDir,
 			"error":     err.Error(),
 		})
@@ -87,17 +89,17 @@ func main() {
 	// Получение списка файлов
 	fileDirs, err := filepath.Glob(cfg.RequestsDir + "/*.json")
 	if err != nil {
-		mainLogger.Fatal("Ошибка чтения директории с запросами", map[string]interface{}{
+		lgr.Fatal("Ошибка чтения директории с запросами", map[string]interface{}{
 			"directory": cfg.RequestsDir,
 			"error":     err.Error(),
 		})
 	}
 
 	if len(fileDirs) == 0 {
-		mainLogger.Info("В папке requests не найдено JSON файлов")
+		lgr.Info("В папке requests не найдено JSON файлов")
 		return
 	}
-	mainLogger.Info("Найдены файлы для отправки", map[string]interface{}{
+	lgr.Info("Найдены файлы для отправки", map[string]interface{}{
 		"count":   len(fileDirs),
 		"workers": cfg.Workers,
 	})
@@ -111,7 +113,7 @@ func main() {
 	go func() {
 		select {
 		case sig := <-sigChan:
-			mainLogger.Warn("Signal received, shutting down gracefully", map[string]interface{}{
+			lgr.Warn("Signal received, shutting down gracefully", map[string]interface{}{
 				"signal": sig.String(),
 			})
 			cancel()
@@ -136,7 +138,7 @@ func main() {
 
 	// Запускаем обработку
 	startTime := time.Now()
-	results := post(cfg, ctx, fileDirs, client, mainLogger)
+	results := post(cfg, ctx, fileDirs, client, lgr)
 	totalDuration := time.Since(startTime)
 
 	// Считаем статистику
@@ -144,13 +146,13 @@ func main() {
 	for _, result := range results {
 		if result.Err != nil {
 			errorCount++
-			mainLogger.Error("❌", map[string]interface{}{
+			lgr.Error("❌", map[string]interface{}{
 				"filename": result.FileName,
 				"error":    result.Err,
 			})
 		} else {
 			successCount++
-			mainLogger.Info("✅", map[string]interface{}{
+			lgr.Info("✅", map[string]interface{}{
 				"filename":   result.FileName,
 				"statusCode": result.StatusCode,
 				"duration":   result.Duration.Milliseconds(),
@@ -160,7 +162,7 @@ func main() {
 
 	fmt.Println()
 	fmt.Printf("📊 ИТОГО: Успешно %d | Ошибок %d | Всего %d\n", successCount, errorCount, len(fileDirs))
-	fmt.Printf("⏱️  Общее время: %v\n", totalDuration.Round(time.Millisecond))
+	fmt.Printf("⏱️ Общее время: %v\n", totalDuration.Round(time.Millisecond))
 	fmt.Printf("⚡ Скорость: %.2f файлов/сек\n", float64(len(fileDirs))/totalDuration.Seconds())
 }
 
@@ -200,7 +202,7 @@ func post(
 
 	// Горутина прогресса
 	progressDone := make(chan struct{})
-	go showProgress(&totalRequests, &totalSuccess, &totalErrors, len(fileDirs), progressDone)
+	go progress.Show(&totalRequests, &totalSuccess, &totalErrors, int64(len(fileDirs)), progressDone)
 
 	// Ждём окончания смены
 	go func() {
@@ -407,31 +409,4 @@ func saveResponse(fileName string, response []byte, dir string, format bool) err
 
 	filePath := filepath.Join(dir, fileName)
 	return os.WriteFile(filePath, data, 0644)
-}
-
-// showProgress показывает прогресс в реальном времени
-func showProgress(
-	totalRequests, totalSuccess, totalErrors *int64,
-	total int,
-	done chan struct{},
-) {
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-done:
-			return
-		case <-ticker.C:
-			req := atomic.LoadInt64(totalRequests)
-			succ := atomic.LoadInt64(totalSuccess)
-			errs := atomic.LoadInt64(totalErrors)
-
-			if req > 0 {
-				percent := float64(req) * 100 / float64(total)
-				fmt.Printf("\r⏳ Progress: %d/%d (%.1f%%) | ✅ %d | ❌ %d",
-					req, total, percent, succ, errs)
-			}
-		}
-	}
 }
