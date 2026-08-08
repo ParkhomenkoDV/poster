@@ -63,7 +63,33 @@ poster/
 └── README.md             # Документация
 ```
 
-# Benchmarks
+## Architecture
+```
+├── requests/
+│   ├── 1.json
+│   ├── 2.json
+│   └── ...
+
+       |
+       v
+
+     worker
+     ------
+    | read |
+    | post |
+    | save |
+     ------
+
+       |
+       v
+
+├── responses/
+│   ├── 1.json
+│   ├── 2.json
+│   └── ...
+```
+
+## Benchmarks
 ```
 goos: darwin
 goarch: arm64

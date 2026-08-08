@@ -90,7 +90,7 @@ func main() {
 	}
 
 	// Получение списка файлов
-	fileDirs, err := filepath.Glob(cfg.RequestsDir + "/*.json")
+	fileDirs, err := filepath.Glob(filepath.Join(cfg.RequestsDir, "*.json"))
 	if err != nil {
 		lgr.Fatal("Ошибка чтения директории с запросами", map[string]interface{}{
 			"directory": cfg.RequestsDir,
