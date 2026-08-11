@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -131,16 +130,16 @@ func formatDuration(dur time.Duration) string {
 		s = totalSec % 60          // секунды
 	)
 
-	var b strings.Builder
-	b.Grow(20) // Буфер достаточного размера: знак + до 10 цифр часов + 'h' + 2 цифры минут + 'm' + 2 цифры секунд + 's' = 18
+	// Буфер достаточного размера: знак + до 10 цифр часов + 'h' + 2 цифры минут + 'm' + 2 цифры секунд + 's' = 18
+	buf := make([]byte, 0, 20)
 	if neg {
-		b.WriteByte('-')
+		buf = append(buf, '-')
 	}
-	b.WriteString(strconv.Itoa(int(h)))
-	b.WriteByte('h')
-	b.WriteString(strconv.Itoa(int(m)))
-	b.WriteByte('m')
-	b.WriteString(strconv.Itoa(int(s)))
-	b.WriteByte('s')
-	return b.String()
+	buf = strconv.AppendInt(buf, h, 10)
+	buf = append(buf, 'h')
+	buf = strconv.AppendInt(buf, m, 10)
+	buf = append(buf, 'm')
+	buf = strconv.AppendInt(buf, s, 10)
+	buf = append(buf, 's')
+	return string(buf) // единственная аллокация – финальная строка
 }

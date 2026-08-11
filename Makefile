@@ -54,7 +54,19 @@ bench:
 
 pprof:
 	@echo "$(BLUE)Running profiling...$(RESET)"
-	go test -benchmem -benchtime 5s -count=5 -cpuprofile=cpu.out -memprofile=mem.out
+	go test -benchmem -benchtime 5s -count=5 -cpuprofile=cpu.out -memprofile=mem.out -trace=trace.out
+
+cpu: pprof
+	go tool pprof -http=:8081 cpu.out
+
+mem: pprof
+	go tool pprof -http=:8082 mem.out
+
+trace: pprof
+	go tool trace -http=:8083 poster.go trace.out
+
+race:
+	go test -race
 
 doc:
 	go doc ./...
@@ -74,5 +86,6 @@ clean:
 	find . -type f -name "*.pyc" -delete
 	find . -type f -name "*.pyo" -delete
 	find . -type f -name "*.out" -delete
+	find . -type f -name "*.test" -delete
 	rm -rf .coverage htmlcov
 	go clean -testcache -modcache
