@@ -1,8 +1,17 @@
 # Poster
 
-Массовая отправка HTTP запросов и получение ответов с последующим сохранением
+Массовая отправка HTTP-запросов (POST) с JSON-телами из файлов и сохранение ответов.
 
 ![](./assets/images/poster.jpg)
+
+- Параллельная обработка файлов с помощью пула воркеров.
+- Переиспользование HTTP-соединений (keep-alive).
+- Буферизация чтения файлов для минимизации аллокаций.
+- Прогресс-бар с отображением скорости и ETA.
+- Гибкое логирование (JSON-формат, уровни, вывод в файл или stdout).
+- Форматирование ответов (pretty-print) опционально.
+- Graceful shutdown по сигналам SIGINT/SIGTERM.
+- Полный набор тестов и бенчмарков.
 
 ## Requirements
 
@@ -20,12 +29,12 @@ go run poster.go [-url <URL>] [-requests <dir>] [-indent] [-timeout N] [-workers
 
 Флаг        | Описание                           | По умолчанию
 ------------|------------------------------------|------------------------------
-`url`       | URL сервера для отправки запросов  | http://localhost:8080/execute
-`requests`  | Директория с JSON-файлами запросов | ./requests
-`indent`    | Форматирование ответа              | false
-`timeout`   | Таймаут HTTP-запросов (секунды)    | 10
-`workers`   | Количество параллельных воркеров   | количетсво ядер
-`log`       | Уровень логирования ('', 'stdout', 'debug', 'info', 'warn', 'error', 'fatal') | ''
+`url`       | URL сервера для отправки запросов  | `http://localhost:8080/execute`
+`requests`  | Директория с JSON-файлами запросов | `./requests`
+`indent`    | Форматирование ответа              | `false`
+`timeout`   | Таймаут HTTP-запросов (секунды)    | `10`
+`workers`   | Количество параллельных воркеров   | `runtime.NumCPU()`
+`log`       | Уровень логирования (`stdout`, `debug`, `info`, `warn`, `error`, `fatal`) | `""` (не логировать)
 
 3. Результат прогона находится в директории `responses`
 
@@ -65,29 +74,30 @@ poster/
 
 ## Architecture
 ```
-├── requests/
-│   ├── 1.json
-│   ├── 2.json
-│   └── ...
-
+requests/*.json
        |
        v
-
-     worker
-     ------
-    | read |
-    | post |
-    | save |
-     ------
-
-       |
-       v
-
-├── responses/
-│   ├── 1.json
-│   ├── 2.json
-│   └── ...
+  [taskChan] --> workers (goroutines)
+       |         |
+       |         v
+       |    readFile() -> валидация JSON
+       |         |
+       |         v
+       |    sendRequest() (HTTP POST)
+       |         |
+       |         v
+       |    saveResponse()
+       |         |
+       |         v
+       +----> resultChan
+                  |
+                  v
+            сбор статистики
+                  |
+                  v
+            responses/*.json
 ```
+Каждый воркер читает файл, отправляет запрос, сохраняет ответ. Используется общий пул соединений HTTP.
 
 ## Benchmarks
 ```
