@@ -204,16 +204,13 @@ func post(
 			&totalRequests, &totalSuccess, &totalErrors) // счетчики
 	}
 
-	// Горутина прогресса
-	progressDone := make(chan struct{})
 	bar := progress.New(uint64(len(fileDirs)), time.Second, true, false, true)
-	go bar.Show(&totalRequests, &totalSuccess, &totalErrors, progressDone)
+	go bar.Show(ctx, &totalRequests, &totalSuccess, &totalErrors)
 
 	// Ждём окончания смены
 	go func() {
 		wg.Wait()
 		close(resultChan)
-		close(progressDone)
 	}()
 
 	// Собираем результаты

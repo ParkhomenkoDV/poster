@@ -4,7 +4,6 @@ goos: darwin
 goarch: arm64
 pkg: poster/internal/progress
 cpu: Apple M4
-=== RUN   BenchmarkShow_Formatting
-BenchmarkShow_Formatting
-BenchmarkShow_Formatting-10     633170620                1.768 ns/op           0 B/op          0 allocs/op
+BenchmarkPrintProgress-10        2085624               566.3 ns/op           448 B/op         16 allocs/op
+BenchmarkFormatDuration-10       7745511               153.5 ns/op           147 B/op          7 allocs/op
 ```

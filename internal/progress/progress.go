@@ -2,8 +2,11 @@ package progress
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -31,8 +34,7 @@ func New(total uint64, interval time.Duration, showSpeed, showETA, showErrors bo
 //   - items   – указатель на атомарный счётчик обработанных элементов
 //   - success – указатель на атомарный счётчик успешных операций (может быть nil)
 //   - errors  – указатель на атомарный счётчик ошибок (может быть nil)
-//   - done    – канал, закрытие которого останавливает вывод
-func (b *Bar) Show(items, success, errors *uint64, done <-chan struct{}) {
+func (b *Bar) Show(ctx context.Context, items, success, errors *uint64) {
 	ticker := time.NewTicker(b.Interval)
 	defer ticker.Stop()
 
@@ -48,7 +50,7 @@ func (b *Bar) Show(items, success, errors *uint64, done <-chan struct{}) {
 	// Выводим прогресс; если канал done закрыт – выводим финальную строку и выходим.
 	for {
 		select {
-		case <-done:
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			b.printProgress(bw, items, success, errors, prevItems, prevTime)
@@ -112,17 +114,33 @@ func (b *Bar) printProgress(bw *bufio.Writer, items, success, errors *uint64, pr
 	line = "\033[2K" + line
 
 	fmt.Fprint(bw, line) // Запись в буферизованный writer.
-	bw.Flush()           // немедленный вывод, чтобы пользователь видел прогресс
+	bw.Flush()           // Немедленный вывод
 }
 
 // formatDuration форматирует длительность в удобочитаемый вид.
 func formatDuration(dur time.Duration) string {
-	dur = dur.Round(time.Second)
-	h := dur / time.Hour
-	dur -= h * time.Hour
-	m := dur / time.Minute
-	dur -= m * time.Minute
-	s := dur / time.Second
+	totalSec := int64(dur.Round(time.Second) / time.Second)
+	neg := totalSec < 0
+	if neg {
+		totalSec = -totalSec
+	}
 
-	return fmt.Sprintf("%dh%dm%ds", h, m, s)
+	var (
+		h = totalSec / 3600        // часы
+		m = (totalSec % 3600) / 60 // минуты
+		s = totalSec % 60          // секунды
+	)
+
+	var b strings.Builder
+	b.Grow(20) // Буфер достаточного размера: знак + до 10 цифр часов + 'h' + 2 цифры минут + 'm' + 2 цифры секунд + 's' = 18
+	if neg {
+		b.WriteByte('-')
+	}
+	b.WriteString(strconv.Itoa(int(h)))
+	b.WriteByte('h')
+	b.WriteString(strconv.Itoa(int(m)))
+	b.WriteByte('m')
+	b.WriteString(strconv.Itoa(int(s)))
+	b.WriteByte('s')
+	return b.String()
 }
