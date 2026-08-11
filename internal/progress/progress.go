@@ -72,7 +72,6 @@ func (b *Bar) printProgress(bw *bufio.Writer, items, success, errors *uint64, pr
 		errs = atomic.LoadUint64(errors)
 	}
 
-	// Строим строку прогресса с помощью strings.Builder (эффективно).
 	var line string
 	if b.Total > 0 {
 		percent := float64(req) / float64(b.Total) * 100
@@ -112,12 +111,11 @@ func (b *Bar) printProgress(bw *bufio.Writer, items, success, errors *uint64, pr
 	// Очищаем текущую строку перед выводом, чтобы избежать артефактов.
 	line = "\033[2K" + line
 
-	// Запись в буферизованный writer.
-	fmt.Fprint(bw, line)
-	bw.Flush() // немедленный вывод, чтобы пользователь видел прогресс
+	fmt.Fprint(bw, line) // Запись в буферизованный writer.
+	bw.Flush()           // немедленный вывод, чтобы пользователь видел прогресс
 }
 
-// formatDuration форматирует длительность в удобочитаемый вид (например, "2m15s").
+// formatDuration форматирует длительность в удобочитаемый вид.
 func formatDuration(dur time.Duration) string {
 	dur = dur.Round(time.Second)
 	h := dur / time.Hour
