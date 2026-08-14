@@ -58,26 +58,6 @@ func BenchmarkLogWithOneField(b *testing.B) {
 	}
 }
 
-// BenchmarkLogWithFiveFields измеряет производительность логирования с пятью полями.
-func BenchmarkLogWithFiveFields(b *testing.B) {
-	logger := &Logger{
-		level:  DEBUG,
-		output: io.Discard,
-		fields: make(map[string]interface{}),
-	}
-	fields := map[string]interface{}{
-		"user_id": 12345,
-		"method":  "GET",
-		"path":    "/api/v1/test",
-		"status":  200,
-		"latency": 1.5,
-	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		logger.Info("сообщение с пятью полями", fields)
-	}
-}
-
 // BenchmarkLogWithTenFields измеряет производительность логирования с десятью полями.
 func BenchmarkLogWithTenFields(b *testing.B) {
 	logger := &Logger{

@@ -60,25 +60,25 @@ func main() {
 
 	lgr.Info("Запуск приложения", map[string]interface{}{
 		"config": map[string]interface{}{
-			"url":          cfg.URL,
-			"requests_dir": cfg.RequestsDir,
-			"timeout":      cfg.Timeout,
-			"workers":      cfg.Workers,
-			"indent":       cfg.Indent,
-			"level":        cfg.Log,
-			"file":         "log.json",
+			"url":     cfg.URL,
+			"req":     cfg.Req,
+			"timeout": cfg.Timeout,
+			"workers": cfg.Workers,
+			"indent":  cfg.Indent,
+			"level":   cfg.Log,
+			"file":    "log.json",
 		},
 	})
 
 	// Проверка наличия директории с запросами
-	if _, err := os.Stat(cfg.RequestsDir); os.IsNotExist(err) {
+	if _, err := os.Stat(cfg.Req); os.IsNotExist(err) {
 		lgr.Fatal("Директория с запросами не существует", map[string]interface{}{
-			"directory": cfg.RequestsDir,
+			"directory": cfg.Req,
 		})
 	}
 
 	// Получаем родительскую директорию
-	parentDir := filepath.Dir(cfg.RequestsDir)
+	parentDir := filepath.Dir(cfg.Req)
 
 	// Создание директории для ответов, если её нет
 	responsesDir := filepath.Join(parentDir, "responses")
@@ -90,10 +90,10 @@ func main() {
 	}
 
 	// Получение списка файлов
-	fileDirs, err := filepath.Glob(filepath.Join(cfg.RequestsDir, "*.json"))
+	fileDirs, err := filepath.Glob(filepath.Join(cfg.Req, "*.json"))
 	if err != nil {
 		lgr.Fatal("Ошибка чтения директории с запросами", map[string]interface{}{
-			"directory": cfg.RequestsDir,
+			"directory": cfg.Req,
 			"error":     err.Error(),
 		})
 	}

@@ -31,8 +31,8 @@ func TestNew_DefaultValues(t *testing.T) {
 	}
 
 	expectedRequestsDir := "requests"
-	if cfg.RequestsDir != expectedRequestsDir {
-		t.Errorf("RequestsDir = %q, ожидалось %q", cfg.RequestsDir, expectedRequestsDir)
+	if cfg.Req != expectedRequestsDir {
+		t.Errorf("RequestsDir = %q, ожидалось %q", cfg.Req, expectedRequestsDir)
 	}
 
 	expectedTimeout := 10
@@ -61,7 +61,7 @@ func TestNew_CustomValues(t *testing.T) {
 	os.Args = []string{
 		"cmd",
 		"-url", "https://api.example.com/v1",
-		"-requests", "/path/to/requests",
+		"-req", "/path/to/requests",
 		"-timeout", "10",
 		"-workers", "4",
 		"-log", "debug",
@@ -81,8 +81,8 @@ func TestNew_CustomValues(t *testing.T) {
 	}
 
 	expectedRequestsDir := "/path/to/requests"
-	if cfg.RequestsDir != expectedRequestsDir {
-		t.Errorf("RequestsDir = %q, ожидалось %q", cfg.RequestsDir, expectedRequestsDir)
+	if cfg.Req != expectedRequestsDir {
+		t.Errorf("RequestsDir = %q, ожидалось %q", cfg.Req, expectedRequestsDir)
 	}
 
 	expectedTimeout := 10
@@ -107,7 +107,7 @@ func TestNew_EmptyRequestsDir(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	// Пытаемся установить пустую директорию запросов
-	os.Args = []string{"cmd", "--requests", ""}
+	os.Args = []string{"cmd", "-req", ""}
 
 	// Сбрасываем флаги
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -118,7 +118,7 @@ func TestNew_EmptyRequestsDir(t *testing.T) {
 	}
 
 	// Проверяем, что конфигурация не создана (должна вернуться пустая структура при ошибке)
-	if cfg != nil && cfg.RequestsDir != "" {
+	if cfg != nil && cfg.Req != "" {
 		t.Errorf("Конфигурация не должна быть создана при ошибке, но получена: %+v", cfg)
 	}
 }
@@ -142,7 +142,7 @@ func TestNew_InvalidTimeout(t *testing.T) {
 			defer func() { os.Args = oldArgs }()
 
 			os.Args = []string{"cmd",
-				"-requests", "req",
+				"-req", "req",
 				"-timeout", test.timeout}
 
 			// Сбрасываем флаги
@@ -186,7 +186,7 @@ func TestNew_InvalidWorkers(t *testing.T) {
 			oldArgs := os.Args
 			defer func() { os.Args = oldArgs }()
 
-			os.Args = []string{"cmd", "--requests", "req", "--workers", test.workers}
+			os.Args = []string{"cmd", "-req", "req", "--workers", test.workers}
 
 			// Сбрасываем флаги
 			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -211,7 +211,7 @@ func TestNew_InvalidLogLevel(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
-	os.Args = []string{"cmd", "--requests", "req", "--log", "invalid_level"}
+	os.Args = []string{"cmd", "-req", "req", "--log", "invalid_level"}
 
 	// Сбрасываем флаги
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -241,7 +241,7 @@ func TestNew_ValidLogLevels(t *testing.T) {
 			oldArgs := os.Args
 			defer func() { os.Args = oldArgs }()
 
-			os.Args = []string{"cmd", "--requests", "req", "--log", test.logLevel}
+			os.Args = []string{"cmd", "-req", "req", "--log", test.logLevel}
 
 			// Сбрасываем флаги
 			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -266,7 +266,7 @@ func TestParse_ValidFlags(t *testing.T) {
 	os.Args = []string{
 		"cmd",
 		"-url", "http://test.com",
-		"-requests", "test_requests",
+		"-req", "test_requests",
 		"-timeout", "5",
 		"-workers", "2",
 		"-log", "info",
@@ -284,8 +284,8 @@ func TestParse_ValidFlags(t *testing.T) {
 		t.Errorf("URL = %q, ожидалось %q", flags.URL, "http://test.com")
 	}
 
-	if flags.RequestsDir != "test_requests" {
-		t.Errorf("RequestsDir = %q, ожидалось %q", flags.RequestsDir, "test_requests")
+	if flags.Req != "test_requests" {
+		t.Errorf("RequestsDir = %q, ожидалось %q", flags.Req, "test_requests")
 	}
 
 	if flags.Timeout != 5 {
@@ -308,7 +308,7 @@ func TestParse_RelativePaths(t *testing.T) {
 
 	os.Args = []string{
 		"cmd",
-		"--requests", "./my_requests",
+		"-req", "./my_requests",
 	}
 
 	// Сбрасываем флаги
@@ -320,8 +320,8 @@ func TestParse_RelativePaths(t *testing.T) {
 	}
 
 	// Проверяем что относительные пути приняты
-	if flags.RequestsDir != "./my_requests" {
-		t.Errorf("RequestsDir = %q, ожидалось %q", flags.RequestsDir, "./my_requests")
+	if flags.Req != "./my_requests" {
+		t.Errorf("RequestsDir = %q, ожидалось %q", flags.Req, "./my_requests")
 	}
 }
 
@@ -353,7 +353,7 @@ func TestNew_ErrorPropagation(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	// Устанавливаем некорректные аргументы
-	os.Args = []string{"cmd", "-requests", ""}
+	os.Args = []string{"cmd", "-req", ""}
 
 	// Сбрасываем флаги
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -366,7 +366,7 @@ func TestNew_ErrorPropagation(t *testing.T) {
 	// Проверяем что возвращается пустая конфигурация при ошибке
 	if cfg == nil {
 		t.Error("Ожидалась пустая структура Config при ошибке")
-	} else if cfg.URL != "" || cfg.RequestsDir != "" {
+	} else if cfg.URL != "" || cfg.Req != "" {
 		t.Errorf("Ожидалась пустая структура Config, но получено: %+v", cfg)
 	}
 }

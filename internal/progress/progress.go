@@ -46,7 +46,7 @@ func (b *Bar) Show(ctx context.Context, items, success, errors *uint64) {
 		prevTime  = time.Now()
 	)
 
-	// Выводим прогресс; если канал done закрыт – выводим финальную строку и выходим.
+	// Выводим прогресс
 	for {
 		select {
 		case <-ctx.Done():
@@ -141,5 +141,5 @@ func formatDuration(dur time.Duration) string {
 	buf = append(buf, 'm')
 	buf = strconv.AppendInt(buf, s, 10)
 	buf = append(buf, 's')
-	return string(buf) // единственная аллокация – финальная строка
+	return string(buf)
 }

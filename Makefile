@@ -79,7 +79,7 @@ build:
 	@echo "$(BLUE)Building project...$(RESET)"
 	go build -o poster poster.go 
 
-clean:
+clear:
 	@echo "$(BLUE)Cleaning project...$(RESET)"
 	find . -type d -name "__pycache__" -exec rm -r {} +
 	find . -type d -name ".pytest_cache" -exec rm -r {} +

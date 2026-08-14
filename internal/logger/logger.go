@@ -13,38 +13,41 @@ import (
 	json "github.com/goccy/go-json"
 )
 
+// Средняя емкость логгера
+const capacity = 3
+
 // Level = уровень логирования
 type Level int
 
 const (
-	NOLOG Level = iota - 1
-	STDOUT
+	STDOUT Level = iota
 	DEBUG
 	INFO
 	WARN
 	ERROR
 	FATAL
+	NOLOG
 )
 
 var levelNames = map[Level]string{
-	NOLOG:  "NOLOG",
 	STDOUT: "STDOUT",
 	DEBUG:  "DEBUG",
 	INFO:   "INFO",
 	WARN:   "WARN",
 	ERROR:  "ERROR",
 	FATAL:  "FATAL",
+	NOLOG:  "NOLOG",
 }
 
 // Log = запись лога
 type Log struct {
-	Timestamp time.Time              `json:"timestamp"`
-	Level     string                 `json:"level"`
-	Message   string                 `json:"message"`
-	Fields    map[string]interface{} `json:"fields,omitempty"`
-	File      string                 `json:"file,omitempty"`
-	Line      int                    `json:"line,omitempty"`
-	Function  string                 `json:"function,omitempty"`
+	Timestamp time.Time      `json:"timestamp"`
+	Level     string         `json:"level"`
+	Message   string         `json:"message"`
+	Fields    map[string]any `json:"fields,omitempty"`
+	File      string         `json:"file,omitempty"`
+	Line      int            `json:"line,omitempty"`
+	Function  string         `json:"function,omitempty"`
 }
 
 // Logger основной логгер
@@ -52,7 +55,7 @@ type Logger struct {
 	level  Level
 	output io.Writer
 	mu     sync.Mutex
-	fields map[string]interface{}
+	fields map[string]any
 }
 
 // New создает новый логгер
@@ -71,9 +74,9 @@ func New(levelName string, outputFile string) (*Logger, error) {
 	case "debug":
 		level = DEBUG
 	case "stdout":
-		return &Logger{level: STDOUT, output: os.Stdout}, nil
-	default:
-		return &Logger{level: NOLOG, output: io.Discard}, nil
+		return &Logger{level: STDOUT, output: os.Stdout, fields: make(map[string]any, capacity)}, nil
+	default: // nolog
+		return &Logger{level: NOLOG, output: io.Discard, fields: nil}, nil
 	}
 
 	// Настраиваем вывод
@@ -82,14 +85,14 @@ func New(levelName string, outputFile string) (*Logger, error) {
 		return &Logger{
 			level:  level,
 			output: os.Stderr,
-			fields: make(map[string]interface{}),
+			fields: make(map[string]any, capacity),
 		}, fmt.Errorf("открытие файла логов: %v", err)
 	}
 
 	return &Logger{
 		level:  level,
 		output: output,
-		fields: make(map[string]interface{}),
+		fields: make(map[string]any, capacity),
 	}, nil
 }
 
@@ -108,11 +111,11 @@ func (l *Logger) SetOutput(w io.Writer) {
 }
 
 // WithFields добавляет постоянные поля к логгеру
-func (l *Logger) WithFields(fields map[string]interface{}) *Logger {
+func (l *Logger) WithFields(fields map[string]any) *Logger {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	newFields := make(map[string]interface{})
+	newFields := make(map[string]any, len(l.fields)+len(fields)+capacity)
 	for k, v := range l.fields {
 		newFields[k] = v
 	}
@@ -128,7 +131,7 @@ func (l *Logger) WithFields(fields map[string]interface{}) *Logger {
 }
 
 // log записывает сообщение
-func (l *Logger) log(level Level, msg string, fields map[string]interface{}) {
+func (l *Logger) log(level Level, msg string, fields map[string]any) {
 	if level < l.level {
 		return
 	}
@@ -152,21 +155,18 @@ func (l *Logger) log(level Level, msg string, fields map[string]interface{}) {
 		Timestamp: time.Now().UTC(),
 		Level:     levelNames[level],
 		Message:   msg,
+		Fields:    make(map[string]any, len(l.fields)+len(fields)),
 		File:      file,
 		Line:      line,
 		Function:  funcName,
 	}
 
 	// Объединяем поля
-	allFields := make(map[string]interface{})
 	for k, v := range l.fields {
-		allFields[k] = v
+		entry.Fields[k] = v
 	}
 	for k, v := range fields {
-		allFields[k] = v
-	}
-	if len(allFields) > 0 {
-		entry.Fields = allFields
+		entry.Fields[k] = v
 	}
 
 	l.mu.Lock()
@@ -190,40 +190,45 @@ func (l *Logger) log(level Level, msg string, fields map[string]interface{}) {
 }
 
 // Debug логирует отладочное сообщение
-func (l *Logger) Debug(msg string, fields ...map[string]interface{}) {
+func (l *Logger) Debug(msg string, fields ...map[string]any) {
 	l.log(DEBUG, msg, mergeFields(fields))
 }
 
 // Info логирует информационное сообщение
-func (l *Logger) Info(msg string, fields ...map[string]interface{}) {
+func (l *Logger) Info(msg string, fields ...map[string]any) {
 	l.log(INFO, msg, mergeFields(fields))
 }
 
 // Warn логирует предупреждение
-func (l *Logger) Warn(msg string, fields ...map[string]interface{}) {
+func (l *Logger) Warn(msg string, fields ...map[string]any) {
 	l.log(WARN, msg, mergeFields(fields))
 }
 
 // Error логирует ошибку
-func (l *Logger) Error(msg string, fields ...map[string]interface{}) {
+func (l *Logger) Error(msg string, fields ...map[string]any) {
 	l.log(ERROR, msg, mergeFields(fields))
 }
 
 // Fatal логирует фатальную ошибку и завершает программу
-func (l *Logger) Fatal(msg string, fields ...map[string]interface{}) {
+func (l *Logger) Fatal(msg string, fields ...map[string]any) {
 	l.log(FATAL, msg, mergeFields(fields))
 	os.Exit(1)
 }
 
 // mergeFields объединяет несколько мап полей
-func mergeFields(fields []map[string]interface{}) map[string]interface{} {
+func mergeFields(fields []map[string]any) map[string]any {
 	switch len(fields) {
 	case 0:
 		return nil
 	case 1:
 		return fields[0] // без копирования
 	default:
-		result := make(map[string]interface{})
+		totalCapacity := 0
+		for _, f := range fields {
+			totalCapacity += len(f)
+		}
+
+		result := make(map[string]any, totalCapacity)
 		for _, f := range fields {
 			for k, v := range f {
 				result[k] = v

@@ -24,13 +24,13 @@
 2. Запустить Poster командой:
  
 ```bash
-go run poster.go [-url <URL>] [-requests <dir>] [-indent] [-timeout N] [-workers N] [-log S]
+go run poster.go [-url <URL>] [-req <dir>] [-indent] [-timeout N] [-workers N] [-log S]
 ```
 
 Флаг        | Описание                           | По умолчанию
 ------------|------------------------------------|------------------------------
 `url`       | URL сервера для отправки запросов  | `http://localhost:8080/execute`
-`requests`  | Директория с JSON-файлами запросов | `./requests`
+`req`       | Директория с JSON-файлами запросов | `./requests`
 `indent`    | Форматирование ответа              | `false`
 `timeout`   | Таймаут HTTP-запросов (секунды)    | `10`
 `workers`   | Количество параллельных воркеров   | `runtime.NumCPU()`

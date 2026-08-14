@@ -24,7 +24,7 @@ func TestParseFlags(t *testing.T) {
 	}{
 		{
 			name:        "все флаги заданы",
-			args:        []string{"cmd", "--url", "https://test.com", "--requests", "req", "--timeout", "60", "--workers", "4", "--log", "debug"},
+			args:        []string{"cmd", "--url", "https://test.com", "-req", "req", "--timeout", "60", "--workers", "4", "--log", "debug"},
 			wantURL:     "https://test.com",
 			wantReqDir:  "req",
 			wantTimeout: 60,
@@ -33,7 +33,7 @@ func TestParseFlags(t *testing.T) {
 			shouldFail:  false,
 		}, {
 			name:        "только обязательные флаги",
-			args:        []string{"cmd", "--requests", "req"},
+			args:        []string{"cmd", "-req", "req"},
 			wantURL:     "http://localhost:8080/execute",
 			wantReqDir:  "req",
 			wantTimeout: 10,
@@ -51,7 +51,7 @@ func TestParseFlags(t *testing.T) {
 			shouldFail:  false,
 		}, {
 			name:        "пустая директория запросов",
-			args:        []string{"cmd", "--requests", ""},
+			args:        []string{"cmd", "-req", ""},
 			wantURL:     "",
 			wantReqDir:  "",
 			wantTimeout: 0,
@@ -78,7 +78,7 @@ func TestParseFlags(t *testing.T) {
 			shouldFail:  true,
 		}, {
 			name:        "workers меньше 1",
-			args:        []string{"cmd", "--requests", "req", "--workers", "0"},
+			args:        []string{"cmd", "-req", "req", "--workers", "0"},
 			wantURL:     "",
 			wantReqDir:  "",
 			wantTimeout: 0,
@@ -87,7 +87,7 @@ func TestParseFlags(t *testing.T) {
 			shouldFail:  true,
 		}, {
 			name:        "некорректный уровень логирования",
-			args:        []string{"cmd", "--requests", "req", "--log", "invalid"},
+			args:        []string{"cmd", "-req", "req", "--log", "invalid"},
 			wantURL:     "",
 			wantReqDir:  "",
 			wantTimeout: 0,
@@ -97,7 +97,7 @@ func TestParseFlags(t *testing.T) {
 		},
 		{
 			name:        "валидные уровни логирования - stdout",
-			args:        []string{"cmd", "--requests", "req", "--log", "stdout"},
+			args:        []string{"cmd", "-req", "req", "--log", "stdout"},
 			wantURL:     "http://localhost:8080/execute",
 			wantReqDir:  "req",
 			wantTimeout: 10,
@@ -106,7 +106,7 @@ func TestParseFlags(t *testing.T) {
 			shouldFail:  false,
 		}, {
 			name:        "валидные уровни логирования - info",
-			args:        []string{"cmd", "--requests", "req", "--log", "info"},
+			args:        []string{"cmd", "-req", "req", "--log", "info"},
 			wantURL:     "http://localhost:8080/execute",
 			wantReqDir:  "req",
 			wantTimeout: 10,
@@ -141,8 +141,8 @@ func TestParseFlags(t *testing.T) {
 				t.Errorf("URL = %q, ожидалось %q", flags.URL, test.wantURL)
 			}
 
-			if flags.RequestsDir != test.wantReqDir {
-				t.Errorf("RequestsDir = %q, ожидалось %q", flags.RequestsDir, test.wantReqDir)
+			if flags.Req != test.wantReqDir {
+				t.Errorf("RequestsDir = %q, ожидалось %q", flags.Req, test.wantReqDir)
 			}
 
 			if flags.Timeout != test.wantTimeout {
@@ -166,7 +166,7 @@ func TestParseFlagOrder(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	// Флаги в разном порядке
-	os.Args = []string{"cmd", "--log", "error", "--timeout", "5", "--workers", "2", "--requests", "req", "--url", "http://test.com"}
+	os.Args = []string{"cmd", "--log", "error", "--timeout", "5", "--workers", "2", "-req", "req", "--url", "http://test.com"}
 
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 
@@ -179,8 +179,8 @@ func TestParseFlagOrder(t *testing.T) {
 		t.Errorf("URL = %q, ожидалось %q", flags.URL, "http://test.com")
 	}
 
-	if flags.RequestsDir != "req" {
-		t.Errorf("RequestsDir = %q, ожидалось %q", flags.RequestsDir, "req")
+	if flags.Req != "req" {
+		t.Errorf("RequestsDir = %q, ожидалось %q", flags.Req, "req")
 	}
 
 	if flags.Timeout != 5 {
@@ -202,7 +202,7 @@ func TestParseDuplicateFlags(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	// Дублирующийся флаг - последнее значение должно использоваться
-	os.Args = []string{"cmd", "--requests", "req", "--url", "first.com", "--timeout", "10", "--workers", "1", "--log", "debug", "--url", "second.com", "--timeout", "20", "--workers", "2", "--log", "info"}
+	os.Args = []string{"cmd", "-req", "req", "--url", "first.com", "--timeout", "10", "--workers", "1", "--log", "debug", "--url", "second.com", "--timeout", "20", "--workers", "2", "--log", "info"}
 
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 
@@ -240,18 +240,27 @@ func TestParseWorkersRange(t *testing.T) {
 		shouldFail bool
 	}{
 		{
-			name:       "workers = 0 (меньше минимума)",
-			args:       []string{"cmd", "--requests", "req", "--workers", "0"},
+			name: "workers = 0 (меньше минимума)",
+			args: []string{"cmd",
+				"-req", "req",
+				"-workers", "0",
+			},
 			want:       0,
 			shouldFail: true,
 		}, {
-			name:       "workers = 1 (минимум)",
-			args:       []string{"cmd", "--requests", "req", "--workers", "1"},
+			name: "workers = 1 (минимум)",
+			args: []string{"cmd",
+				"-req", "req",
+				"-workers", "1",
+			},
 			want:       1,
 			shouldFail: false,
 		}, {
-			name:       "workers = numCPU (максимум)",
-			args:       []string{"cmd", "--requests", "req", "--workers", strconv.Itoa(numCPU)},
+			name: "workers = numCPU (максимум)",
+			args: []string{"cmd",
+				"-req", "req",
+				"-workers", strconv.Itoa(numCPU),
+			},
 			want:       numCPU,
 			shouldFail: false,
 		},
