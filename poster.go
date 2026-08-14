@@ -21,6 +21,8 @@ import (
 	json "github.com/goccy/go-json"
 )
 
+const MB = 1024 * 1024
+
 // Result содержит результат обработки файла
 type Result struct {
 	Err          error         `doc:"Ошибка"`
@@ -233,7 +235,7 @@ func work(
 	defer wg.Done()
 
 	// Локальный буфер для чтения файлов
-	buf := make([]byte, 0, 1024*1024) // 1MB начальный размер
+	buf := make([]byte, 0, 1*MB) // 1MB начальный размер
 
 	for fileDir := range taskChan {
 		select {
