@@ -23,15 +23,15 @@ import (
 
 const MB = 1024 * 1024
 
-// Result содержит результат обработки файла
-type Result struct {
-	Err          error         `doc:"Ошибка"`
-	FileName     string        `doc:"Имя файла"`
-	FileSize     int64         `doc:"Размер файла"`
-	RequestSize  int           `doc:"Размер JSON запроса"`
-	ResponseSize int           `doc:"Размер JSON ответа"`
-	Duration     time.Duration `doc:"Время обработки"`
-	StatusCode   int           `doc:"HTTP статус код"`
+// result содержит результат обработки файла
+type result struct {
+	err          error         `doc:"Ошибка"`
+	fileName     string        `doc:"Имя файла"`
+	fileSize     int64         `doc:"Размер файла"`
+	requestSize  int           `doc:"Размер JSON запроса"`
+	responseSize int           `doc:"Размер JSON ответа"`
+	duration     time.Duration `doc:"Время обработки"`
+	statusCode   int           `doc:"HTTP статус код"`
 }
 
 func main() {
@@ -143,18 +143,18 @@ func main() {
 	// Считаем статистику
 	successCount, errorCount := 0, 0
 	for _, result := range results {
-		if result.Err != nil {
+		if result.err != nil {
 			errorCount++
 			lgr.Error("❌", map[string]any{
-				"filename": result.FileName,
-				"error":    result.Err,
+				"filename": result.fileName,
+				"error":    result.err,
 			})
 		} else {
 			successCount++
 			lgr.Info("✅", map[string]any{
-				"filename":   result.FileName,
-				"statusCode": result.StatusCode,
-				"duration":   result.Duration.Milliseconds(),
+				"filename":   result.fileName,
+				"statusCode": result.statusCode,
+				"duration":   result.duration.Milliseconds(),
 			})
 		}
 	}
@@ -173,9 +173,9 @@ func post(
 	responsesDir string,
 	client *http.Client,
 	log *logger.Logger,
-) []Result {
+) []result {
 	tasks := make(chan string, len(fileDirs))      // канал задач
-	resultChan := make(chan Result, len(fileDirs)) // Канал результатов
+	resultChan := make(chan result, len(fileDirs)) // Канал результатов
 
 	// Заполняем очередь задач
 	for _, dir := range fileDirs {
@@ -210,7 +210,7 @@ func post(
 	}()
 
 	// Собираем результаты
-	results := make([]Result, 0, len(fileDirs))
+	results := make([]result, 0, len(fileDirs))
 	for result := range resultChan {
 		results = append(results, result)
 	}
@@ -227,7 +227,7 @@ func work(
 	responsesDir string,
 	format bool,
 	taskChan <-chan string,
-	resultChan chan<- Result,
+	resultChan chan<- result,
 	wg *sync.WaitGroup,
 	log *logger.Logger,
 	totalRequests, totalSuccess, totalErrors *uint64,
@@ -240,9 +240,9 @@ func work(
 	for fileDir := range taskChan {
 		select {
 		case <-ctx.Done():
-			resultChan <- Result{
-				FileName: filepath.Base(fileDir),
-				Err:      ctx.Err(),
+			resultChan <- result{
+				fileName: filepath.Base(fileDir),
+				err:      ctx.Err(),
 			}
 			atomic.AddUint64(totalErrors, 1)
 			atomic.AddUint64(totalRequests, 1)
@@ -256,10 +256,10 @@ func work(
 		// Читаем файл
 		jsonData, fileSize, err := readFile(fileDir, &buf)
 		if err != nil {
-			resultChan <- Result{
-				FileName: fileName,
-				Duration: time.Since(startTime),
-				Err:      err,
+			resultChan <- result{
+				fileName: fileName,
+				duration: time.Since(startTime),
+				err:      err,
 			}
 			atomic.AddUint64(totalErrors, 1)
 			atomic.AddUint64(totalRequests, 1)
@@ -268,13 +268,13 @@ func work(
 
 		// Валидируем JSON
 		if !json.Valid(jsonData) {
-			resultChan <- Result{
-				FileName:    fileName,
-				FileSize:    fileSize,
-				RequestSize: len(jsonData),
-				Duration:    time.Since(startTime),
-				Err:         fmt.Errorf("invalid JSON"),
-				StatusCode:  0,
+			resultChan <- result{
+				fileName:    fileName,
+				fileSize:    fileSize,
+				requestSize: len(jsonData),
+				duration:    time.Since(startTime),
+				err:         fmt.Errorf("invalid JSON"),
+				statusCode:  0,
 			}
 			atomic.AddUint64(totalErrors, 1)
 			atomic.AddUint64(totalRequests, 1)
@@ -284,14 +284,14 @@ func work(
 		// Отправляем HTTP запрос
 		response, statusCode, err := sendRequest(ctx, client, url, jsonData)
 		if err != nil {
-			resultChan <- Result{
-				FileName:     fileName,
-				FileSize:     fileSize,
-				RequestSize:  len(jsonData),
-				ResponseSize: 0,
-				Duration:     time.Since(startTime),
-				StatusCode:   statusCode,
-				Err:          fmt.Errorf("отправка: %v", err),
+			resultChan <- result{
+				fileName:     fileName,
+				fileSize:     fileSize,
+				requestSize:  len(jsonData),
+				responseSize: 0,
+				duration:     time.Since(startTime),
+				statusCode:   statusCode,
+				err:          fmt.Errorf("отправка: %v", err),
 			}
 			atomic.AddUint64(totalErrors, 1)
 			atomic.AddUint64(totalRequests, 1)
@@ -302,25 +302,25 @@ func work(
 		saveErr := saveResponse(fileName, response, responsesDir, format)
 		totalDuration := time.Since(startTime)
 		if saveErr != nil {
-			resultChan <- Result{
-				FileName:     fileName,
-				FileSize:     fileSize,
-				RequestSize:  len(jsonData),
-				ResponseSize: len(response),
-				Duration:     totalDuration,
-				StatusCode:   statusCode,
-				Err:          fmt.Errorf("saving response: %v", err),
+			resultChan <- result{
+				fileName:     fileName,
+				fileSize:     fileSize,
+				requestSize:  len(jsonData),
+				responseSize: len(response),
+				duration:     totalDuration,
+				statusCode:   statusCode,
+				err:          fmt.Errorf("saving response: %v", err),
 			}
 			atomic.AddUint64(totalErrors, 1)
 		} else {
-			resultChan <- Result{
-				FileName:     fileName,
-				FileSize:     fileSize,
-				RequestSize:  len(jsonData),
-				ResponseSize: len(response),
-				Duration:     totalDuration,
-				StatusCode:   statusCode,
-				Err:          nil,
+			resultChan <- result{
+				fileName:     fileName,
+				fileSize:     fileSize,
+				requestSize:  len(jsonData),
+				responseSize: len(response),
+				duration:     totalDuration,
+				statusCode:   statusCode,
+				err:          nil,
 			}
 			atomic.AddUint64(totalSuccess, 1)
 		}

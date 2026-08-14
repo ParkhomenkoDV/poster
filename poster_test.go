@@ -264,7 +264,7 @@ func TestPostGracefulShutdown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Запускаем post в горутине
-	resultsChan := make(chan []Result, 1)
+	resultsChan := make(chan []result, 1)
 	go func() {
 		results := post(cfg, ctx, fileNames, reqDir, client, log) // ответы сохраняются в reqDir, но это не важно
 		resultsChan <- results
@@ -283,7 +283,7 @@ func TestPostGracefulShutdown(t *testing.T) {
 		// Мы не можем точно предсказать количество, но хотя бы одна ошибка должна быть из-за ctx.Done()
 		hasContextError := false
 		for _, r := range results {
-			if r.Err == context.Canceled || r.Err == context.DeadlineExceeded {
+			if r.err == context.Canceled || r.err == context.DeadlineExceeded {
 				hasContextError = true
 				break
 			}
