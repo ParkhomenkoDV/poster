@@ -47,19 +47,19 @@ func main() {
 	defer lgr.Info("Приложение завершено")
 
 	// Добавляем поля по умолчанию
-	lgr = lgr.WithFields(map[string]interface{}{
+	lgr = lgr.WithFields(map[string]any{
 		"app":       "poster",
 		"pid":       os.Getpid(),
 		"timestamp": time.Now().Format(time.DateTime),
 	})
 
-	lgr.Info("Логгер инициализирован", map[string]interface{}{
+	lgr.Info("Логгер инициализирован", map[string]any{
 		"level": cfg.Log,
 		"file":  "log.json",
 	})
 
-	lgr.Info("Запуск приложения", map[string]interface{}{
-		"config": map[string]interface{}{
+	lgr.Info("Запуск приложения", map[string]any{
+		"config": map[string]any{
 			"url":     cfg.URL,
 			"req":     cfg.Req,
 			"timeout": cfg.Timeout,
@@ -70,20 +70,13 @@ func main() {
 		},
 	})
 
-	// Проверка наличия директории с запросами
-	if _, err := os.Stat(cfg.Req); os.IsNotExist(err) {
-		lgr.Fatal("Директория с запросами не существует", map[string]interface{}{
-			"directory": cfg.Req,
-		})
-	}
-
 	// Получаем родительскую директорию
 	parentDir := filepath.Dir(cfg.Req)
 
 	// Создание директории для ответов, если её нет
 	responsesDir := filepath.Join(parentDir, "responses")
 	if err := os.MkdirAll(responsesDir, 0755); err != nil {
-		lgr.Fatal("Ошибка создания директории для ответов", map[string]interface{}{
+		lgr.Fatal("Ошибка создания директории для ответов", map[string]any{
 			"directory": responsesDir,
 			"error":     err.Error(),
 		})
@@ -92,7 +85,7 @@ func main() {
 	// Получение списка файлов
 	fileDirs, err := filepath.Glob(filepath.Join(cfg.Req, "*.json"))
 	if err != nil {
-		lgr.Fatal("Ошибка чтения директории с запросами", map[string]interface{}{
+		lgr.Fatal("Ошибка чтения директории с запросами", map[string]any{
 			"directory": cfg.Req,
 			"error":     err.Error(),
 		})
@@ -102,7 +95,7 @@ func main() {
 		lgr.Info("В папке requests не найдено JSON файлов")
 		return
 	}
-	lgr.Info("Найдены файлы для отправки", map[string]interface{}{
+	lgr.Info("Найдены файлы для отправки", map[string]any{
 		"count":   len(fileDirs),
 		"workers": cfg.Workers,
 	})
@@ -116,7 +109,7 @@ func main() {
 	go func() {
 		select {
 		case sig := <-sigChan:
-			lgr.Warn("Signal received, shutting down gracefully", map[string]interface{}{
+			lgr.Warn("Signal received, shutting down gracefully", map[string]any{
 				"signal": sig.String(),
 			})
 			cancel()
@@ -149,13 +142,13 @@ func main() {
 	for _, result := range results {
 		if result.Err != nil {
 			errorCount++
-			lgr.Error("❌", map[string]interface{}{
+			lgr.Error("❌", map[string]any{
 				"filename": result.FileName,
 				"error":    result.Err,
 			})
 		} else {
 			successCount++
-			lgr.Info("✅", map[string]interface{}{
+			lgr.Info("✅", map[string]any{
 				"filename":   result.FileName,
 				"statusCode": result.StatusCode,
 				"duration":   result.Duration.Milliseconds(),

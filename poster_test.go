@@ -1,7 +1,8 @@
 package main
 
 import (
-	"context" // <-- добавлен импорт
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,216 +12,286 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"poster/internal/config"
+	"poster/internal/logger"
 )
 
-// generateData создаёт срез байт указанного размера, заполненный повторяющимся паттерном
-func generateData(size int64) []byte {
-	data := make([]byte, size)
-	for i := range data {
-		data[i] = byte(i % 256)
+// noopLogger возвращает логгер, который ничего не пишет (или пишет в io.Discard)
+func noopLogger(t *testing.T) *logger.Logger {
+	t.Helper()
+	// Создаём логгер с уровнем "error" и файлом в TempDir, чтобы не засорять вывод
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "test.log")
+	l, err := logger.New("error", logPath)
+	if err != nil {
+		t.Fatalf("не удалось создать логгер: %v", err)
 	}
-	return data
+	// Можно также переопределить вывод в io.Discard, если логгер поддерживает,
+	// но в текущей реализации он пишет в файл, что нормально.
+	return l
 }
 
-// BenchmarkReadFile измеряет производительность чтения файлов
-// с переиспользованием буфера для разных размеров.
-func BenchmarkReadFile(b *testing.B) {
-	tempDir := b.TempDir()
-
-	sizes := []struct {
-		name string
-		size int64
-	}{
-		{"1KB", 1 << 10},
-		{"100KB", 100 << 10},
-		{"1MB", 1 << 20},
-		{"10MB", 10 << 20},
-	}
-
-	files := make(map[string]string)
-	for _, s := range sizes {
-		filePath := filepath.Join(tempDir, s.name+".txt")
-		if err := os.WriteFile(filePath, generateData(s.size), 0644); err != nil {
-			b.Fatalf("создание файла %s: %v", s.name, err)
+// TestReadFile проверяет чтение файлов.
+func TestReadFile(t *testing.T) {
+	t.Run("успешное чтение", func(t *testing.T) {
+		content := []byte(`{"test": true}`)
+		tmpFile := filepath.Join(t.TempDir(), "test.json")
+		if err := os.WriteFile(tmpFile, content, 0644); err != nil {
+			t.Fatal(err)
 		}
-		files[s.name] = filePath
-	}
 
-	initialBufCap := 1024
-
-	b.Run("single", func(b *testing.B) {
-		for _, s := range sizes {
-			filePath := files[s.name]
-			b.Run(s.name, func(b *testing.B) {
-				buf := make([]byte, 0, initialBufCap)
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					data, size, err := readFile(filePath, &buf)
-					if err != nil {
-						b.Fatalf("readFile error: %v", err)
-					}
-					if int64(len(data)) != size {
-						b.Fatalf("размер данных %d не совпадает с размером файла %d", len(data), size)
-					}
-					_ = data
-				}
-			})
+		buf := make([]byte, 0, 1024)
+		data, size, err := readFile(tmpFile, &buf)
+		if err != nil {
+			t.Fatalf("не ожидалась ошибка: %v", err)
+		}
+		if size != int64(len(content)) {
+			t.Errorf("размер = %d, ожидалось %d", size, len(content))
+		}
+		if !bytes.Equal(data, content) {
+			t.Errorf("данные = %q, ожидалось %q", data, content)
+		}
+		// Проверяем, что буфер переиспользуется и имеет достаточную ёмкость
+		if cap(buf) < len(content) {
+			t.Error("ёмкость буфера не увеличилась")
 		}
 	})
 
-	b.Run("buffer-sizes", func(b *testing.B) {
-		const fileSize = 1 << 20
-		filePath, ok := files["1MB"]
-		if !ok {
-			b.Skip("файл 1MB не создан")
-		}
-
-		bufferSizes := []int{512, 1024, 4096, 16 * 1024, 64 * 1024, 1024 * 1024}
-		for _, capSize := range bufferSizes {
-			b.Run(fmt.Sprintf("cap-%d", capSize), func(b *testing.B) {
-				buf := make([]byte, 0, capSize)
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					_, _, err := readFile(filePath, &buf)
-					if err != nil {
-						b.Fatal(err)
-					}
-				}
-			})
+	t.Run("файл не существует", func(t *testing.T) {
+		buf := make([]byte, 0, 10)
+		_, _, err := readFile("/nonexistent", &buf)
+		if err == nil {
+			t.Error("ожидалась ошибка, но не получена")
 		}
 	})
 
-	b.Run("parallel", func(b *testing.B) {
-		const fileSize = 1 << 20
-		filePath, ok := files["1MB"]
-		if !ok {
-			b.Skip("файл 1MB не создан")
+	t.Run("пустой файл", func(t *testing.T) {
+		tmpFile := filepath.Join(t.TempDir(), "empty.json")
+		if err := os.WriteFile(tmpFile, []byte{}, 0644); err != nil {
+			t.Fatal(err)
 		}
-
-		b.RunParallel(func(pb *testing.PB) {
-			buf := make([]byte, 0, 1024)
-			for pb.Next() {
-				_, _, err := readFile(filePath, &buf)
-				if err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
+		buf := make([]byte, 0, 10)
+		data, size, err := readFile(tmpFile, &buf)
+		if err != nil {
+			t.Fatalf("не ожидалась ошибка: %v", err)
+		}
+		if size != 0 {
+			t.Errorf("размер = %d, ожидалось 0", size)
+		}
+		if len(data) != 0 {
+			t.Errorf("длина данных = %d, ожидалось 0", len(data))
+		}
 	})
 }
 
-// testHandler возвращает фиксированный JSON-ответ со статусом 200
-func testHandler(w http.ResponseWriter, r *http.Request) {
-	_, _ = io.ReadAll(r.Body)
-	defer r.Body.Close()
+// TestSaveResponse проверяет сохранение ответов.
+func TestSaveResponse(t *testing.T) {
+	tmpDir := t.TempDir()
+	responsesDir := filepath.Join(tmpDir, "responses")
+	if err := os.MkdirAll(responsesDir, 0755); err != nil {
+		t.Fatal(err)
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"status":"ok","message":"benchmark"}`))
+	validJSON := []byte(`{"key":"value"}`)
+	invalidJSON := []byte(`not json`)
+
+	t.Run("без форматирования", func(t *testing.T) {
+		filename := "resp1.json"
+		err := saveResponse(filename, validJSON, responsesDir, false)
+		if err != nil {
+			t.Fatalf("не ожидалась ошибка: %v", err)
+		}
+		path := filepath.Join(responsesDir, filename)
+		read, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(read, validJSON) {
+			t.Errorf("сохранённые данные = %q, ожидалось %q", read, validJSON)
+		}
+	})
+
+	t.Run("с форматированием (валидный JSON)", func(t *testing.T) {
+		filename := "resp2.json"
+		err := saveResponse(filename, validJSON, responsesDir, true)
+		if err != nil {
+			t.Fatalf("не ожидалась ошибка: %v", err)
+		}
+		path := filepath.Join(responsesDir, filename)
+		read, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Проверяем, что это отформатированный JSON
+		var dst bytes.Buffer
+		if err := json.Indent(&dst, validJSON, "", "  "); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(read, dst.Bytes()) {
+			t.Errorf("сохранённые данные = %q, ожидалось форматированное %q", read, dst.Bytes())
+		}
+	})
+
+	t.Run("с форматированием (невалидный JSON) – сохраняется как есть", func(t *testing.T) {
+		filename := "resp3.json"
+		err := saveResponse(filename, invalidJSON, responsesDir, true)
+		if err != nil {
+			t.Fatalf("не ожидалась ошибка: %v", err)
+		}
+		path := filepath.Join(responsesDir, filename)
+		read, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(read, invalidJSON) {
+			t.Errorf("сохранённые данные = %q, ожидалось исходное %q", read, invalidJSON)
+		}
+	})
 }
 
-// generateJSON создаёт JSON-объект указанного размера (приблизительно)
-func generateJSON(size int) []byte {
-	data := make([]byte, size)
-	for i := range data {
-		data[i] = 'a'
-	}
-	obj := map[string]interface{}{
-		"id":   12345,
-		"data": string(data),
-	}
-	jsonBytes, _ := json.Marshal(obj)
-	return jsonBytes
-}
-
-// BenchmarkSendRequest измеряет производительность отправки HTTP-запросов
-// с разными размерами полезной нагрузки.
-func BenchmarkSendRequest(b *testing.B) {
-	server := httptest.NewServer(http.HandlerFunc(testHandler))
+// TestSendRequest проверяет отправку HTTP запросов.
+func TestSendRequest(t *testing.T) {
+	// Создаём тестовый сервер
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Проверяем метод и заголовки
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
+			w.WriteHeader(http.StatusUnsupportedMediaType)
+			return
+		}
+		// Читаем тело
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		// Отвечаем успехом
+		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "application/json")
+		// Эхо тела
+		_, _ = w.Write(body)
+	}))
 	defer server.Close()
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 100,
-			MaxConnsPerHost:     100,
-			IdleConnTimeout:     90 * time.Second,
-			DisableCompression:  true,
-		},
-	}
+	ctx := context.Background()
+	client := &http.Client{Timeout: 5 * time.Second}
 
-	ctx := context.Background() // <-- создаём контекст
+	t.Run("успешный запрос", func(t *testing.T) {
+		jsonData := []byte(`{"msg":"hello"}`)
+		respBody, status, err := sendRequest(ctx, client, server.URL, jsonData)
+		if err != nil {
+			t.Fatalf("не ожидалась ошибка: %v", err)
+		}
+		if status != http.StatusOK {
+			t.Errorf("статус = %d, ожидалось %d", status, http.StatusOK)
+		}
+		if !bytes.Equal(respBody, jsonData) {
+			t.Errorf("тело ответа = %q, ожидалось %q", respBody, jsonData)
+		}
+	})
 
-	smallPayload := []byte(`{"id":1,"name":"test"}`)
-	mediumPayload := generateJSON(1024)
-	largePayload := generateJSON(10240)
+	t.Run("отмена контекста", func(t *testing.T) {
+		ctxCancel, cancel := context.WithCancel(ctx)
+		cancel() // сразу отменяем
+		_, _, err := sendRequest(ctxCancel, client, server.URL, []byte(`{}`))
+		if err == nil {
+			t.Error("ожидалась ошибка отмены контекста")
+		}
+	})
 
-	testCases := []struct {
-		name string
-		data []byte
-	}{
-		{"small", smallPayload},
-		{"medium", mediumPayload},
-		{"large", largePayload},
-	}
+	t.Run("сервер возвращает ошибку 404", func(t *testing.T) {
+		// Создаём другой сервер, который всегда возвращает 404
+		server404 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer server404.Close()
 
-	for _, tc := range testCases {
-		b.Run(tc.name, func(b *testing.B) {
-			// Прогрев
-			_, _, err := sendRequest(ctx, client, server.URL, tc.data) // <-- передаём ctx
-			if err != nil {
-				b.Fatalf("прогрев failed: %v", err)
-			}
-
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				_, _, err := sendRequest(ctx, client, server.URL, tc.data) // <-- передаём ctx
-				if err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
-	}
+		_, status, err := sendRequest(ctx, client, server404.URL, []byte(`{}`))
+		if err == nil {
+			t.Error("ожидалась ошибка из-за статуса 404")
+		}
+		if status != http.StatusNotFound {
+			t.Errorf("статус = %d, ожидалось %d", status, http.StatusNotFound)
+		}
+	})
 }
 
-// Benchmark_saveResponse измеряет производительность сохранения ответов в двух режимах: с форматированием JSON и без.
-func Benchmark_saveResponse(b *testing.B) {
-	dir := b.TempDir()
-
-	testData := map[string]interface{}{
-		"status": "ok",
-		"data": map[string]interface{}{
-			"id":    12345,
-			"name":  "benchmark-test",
-			"items": []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
-			"meta": map[string]string{
-				"version": "1.0",
-				"env":     "prod",
-			},
-		},
-	}
-	response, err := json.Marshal(testData)
-	if err != nil {
-		b.Fatal(err)
+// TestPostGracefulShutdown проверяет, что post корректно завершается при отмене контекста.
+func TestPostGracefulShutdown(t *testing.T) {
+	// Создаём много файлов, чтобы обработка не завершилась мгновенно
+	tmpDir := t.TempDir()
+	reqDir := filepath.Join(tmpDir, "requests")
+	if err := os.MkdirAll(reqDir, 0755); err != nil {
+		t.Fatal(err)
 	}
 
-	const fileName = "response.json"
+	// Создаём 20 файлов
+	fileNames := make([]string, 20)
+	for i := 0; i < 20; i++ {
+		fname := fmt.Sprintf("%d.json", i+1)
+		path := filepath.Join(reqDir, fname)
+		content := fmt.Sprintf(`{"id":%d}`, i+1)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		fileNames[i] = path
+	}
 
-	b.ResetTimer()
-	b.Run("indent", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			if err := saveResponse(fileName, response, dir, true); err != nil {
-				b.Fatal(err)
+	// Сервер с задержкой, чтобы замедлить обработку
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond) // небольшая задержка
+		body, _ := io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		URL:     server.URL,
+		Req:     reqDir,
+		Indent:  false,
+		Timeout: 10,
+		Workers: 4,
+		Log:     "error",
+	}
+	log := noopLogger(t)
+	client := &http.Client{Timeout: time.Duration(cfg.Timeout) * time.Second}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Запускаем post в горутине
+	resultsChan := make(chan []Result, 1)
+	go func() {
+		results := post(cfg, ctx, fileNames, reqDir, client, log) // ответы сохраняются в reqDir, но это не важно
+		resultsChan <- results
+	}()
+
+	// Ждём немного, чтобы началась обработка
+	time.Sleep(200 * time.Millisecond)
+	// Отменяем контекст
+	cancel()
+
+	// Ждём завершения post
+	select {
+	case results := <-resultsChan:
+		// Проверяем, что все результаты имеют ошибку контекста или успешны (если успели завершиться)
+		// Но важно, что часть запросов была прервана.
+		// Мы не можем точно предсказать количество, но хотя бы одна ошибка должна быть из-за ctx.Done()
+		hasContextError := false
+		for _, r := range results {
+			if r.Err == context.Canceled || r.Err == context.DeadlineExceeded {
+				hasContextError = true
+				break
 			}
 		}
-	})
-
-	b.ResetTimer()
-	b.Run("no-indent", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			if err := saveResponse(fileName, response, dir, false); err != nil {
-				b.Fatal(err)
-			}
+		if !hasContextError {
+			t.Error("не найдено ни одного результата с ошибкой отмены контекста")
 		}
-	})
+	case <-time.After(5 * time.Second):
+		t.Fatal("тест завис, post не завершился")
+	}
 }
