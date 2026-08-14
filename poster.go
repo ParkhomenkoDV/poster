@@ -71,6 +71,23 @@ func main() {
 		},
 	})
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		select {
+		case sig := <-sigChan:
+			lgr.Warn("Signal received, shutting down gracefully", map[string]any{
+				"signal": sig.String(),
+			})
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
 	// Получаем родительскую директорию
 	parentDir := filepath.Dir(cfg.Req)
 
@@ -100,23 +117,6 @@ func main() {
 		"count":   len(fileDirs),
 		"workers": cfg.Workers,
 	})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		select {
-		case sig := <-sigChan:
-			lgr.Warn("Signal received, shutting down gracefully", map[string]any{
-				"signal": sig.String(),
-			})
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
 
 	// Создание HTTP клиента с пулом соединений
 	client := &http.Client{
@@ -172,14 +172,14 @@ func post(
 	client *http.Client,
 	log *logger.Logger,
 ) []Result {
-	taskChan := make(chan string, len(fileDirs))   // канал задач
+	tasks := make(chan string, len(fileDirs))      // канал задач
 	resultChan := make(chan Result, len(fileDirs)) // Канал результатов
 
 	// Заполняем очередь задач
 	for _, dir := range fileDirs {
-		taskChan <- dir
+		tasks <- dir
 	}
-	close(taskChan) // Закрываем смену
+	close(tasks) // Закрываем смену
 
 	var wg sync.WaitGroup // Счётчик рабочих
 
@@ -194,7 +194,7 @@ func post(
 	for i := 0; i < cfg.Workers; i++ {
 		wg.Add(1)
 		go work(i, ctx, client, cfg.URL, responsesDir, cfg.Indent,
-			taskChan, resultChan, &wg, log,
+			tasks, resultChan, &wg, log,
 			&totalRequests, &totalSuccess, &totalErrors) // счетчики
 	}
 
