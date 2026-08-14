@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,6 +17,8 @@ import (
 	"poster/internal/config"
 	"poster/internal/logger"
 	"poster/internal/progress"
+
+	json "github.com/goccy/go-json"
 )
 
 // Result содержит результат обработки файла
