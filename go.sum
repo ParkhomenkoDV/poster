@@ -1,2 +1,4 @@
+github.com/ParkhomenkoDV/progress v0.0.0-20260815185901-9f8d9b4ca832 h1:i4hDB3cbe79UkXvP8cCf7PrnFHapgW8Ia2MUNZRhPok=
+github.com/ParkhomenkoDV/progress v0.0.0-20260815185901-9f8d9b4ca832/go.mod h1:9lVihMztVdeIJH5I+8nhYdqRY/lpjl5E6JRVcMERUoE=
 github.com/goccy/go-json v0.10.6 h1:p8HrPJzOakx/mn/bQtjgNjdTcN+/S6FcG2CTtQOrHVU=
 github.com/goccy/go-json v0.10.6/go.mod h1:oq7eo15ShAhp70Anwd5lgX2pLfOS3QCiwU/PULtXL6M=

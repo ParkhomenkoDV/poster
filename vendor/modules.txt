@@ -1,3 +1,6 @@
+# github.com/ParkhomenkoDV/progress v0.0.0-20260815185901-9f8d9b4ca832
+## explicit; go 1.18
+github.com/ParkhomenkoDV/progress
 # github.com/goccy/go-json v0.10.6
 ## explicit; go 1.19
 github.com/goccy/go-json

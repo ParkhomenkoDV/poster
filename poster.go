@@ -16,8 +16,8 @@ import (
 
 	"poster/internal/config"
 	"poster/internal/logger"
-	"poster/internal/progress"
 
+	"github.com/ParkhomenkoDV/progress"
 	json "github.com/goccy/go-json"
 )
 
@@ -200,7 +200,7 @@ func post(
 			&totalRequests, &totalSuccess, &totalErrors) // счетчики
 	}
 
-	bar := progress.New(uint64(len(fileDirs)), time.Second, true, false, true)
+	bar := progress.New("⏳ ", time.Second, uint64(len(fileDirs)), true, false, true)
 	go bar.Show(ctx, &totalRequests, &totalSuccess, &totalErrors)
 
 	// Ждём окончания смены

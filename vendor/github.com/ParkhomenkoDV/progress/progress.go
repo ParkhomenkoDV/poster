@@ -11,20 +11,27 @@ import (
 )
 
 type Bar struct {
-	Total      uint64        // общее количество единиц работы (0 – неизвестно)
-	Interval   time.Duration // частота обновления
-	ShowSpeed  bool          // показывать скорость обработки (шт/сек)
-	ShowETA    bool          // показывать оценочное время до завершения
-	ShowErrors bool          // показывать счётчик ошибок (если передан)
+	Description string        // описание
+	Interval    time.Duration // частота обновления
+	Total       uint64        // общее количество единиц работы (0 – неизвестно)
+	ShowSpeed   bool          // показывать скорость обработки (шт/сек)
+	ShowETA     bool          // показывать оценочное время до завершения
+	ShowErrors  bool          // показывать счётчик ошибок (если передан)
 }
 
-func New(total uint64, interval time.Duration, showSpeed, showETA, showErrors bool) *Bar {
+func New(
+	description string,
+	interval time.Duration,
+	total uint64,
+	showSpeed, showETA, showErrors bool,
+) *Bar {
 	return &Bar{
-		Total:      total,
-		Interval:   interval.Abs(),
-		ShowSpeed:  showSpeed,
-		ShowETA:    showETA,
-		ShowErrors: showErrors,
+		Description: description,
+		Total:       total,
+		Interval:    interval.Abs(),
+		ShowSpeed:   showSpeed,
+		ShowETA:     showETA,
+		ShowErrors:  showErrors,
 	}
 }
 
@@ -76,9 +83,9 @@ func (b *Bar) printProgress(bw *bufio.Writer, items, success, errors *uint64, pr
 	var line string
 	if b.Total > 0 {
 		percent := float64(req) / float64(b.Total) * 100
-		line = fmt.Sprintf("\r⏳ %d / %d (%.1f%%)", req, b.Total, percent)
+		line = fmt.Sprintf("\r%s %d / %d (%.1f%%)", b.Description, req, b.Total, percent)
 	} else {
-		line = fmt.Sprintf("\r⏳ Обработано: %d", req)
+		line = fmt.Sprintf("\r%s %d", b.Description, req)
 	}
 
 	// Скорость (items/sec)
