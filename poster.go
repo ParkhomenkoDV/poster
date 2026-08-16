@@ -188,7 +188,6 @@ func post(
 	// Атомарная статистика
 	var (
 		totalRequests uint64
-		totalSuccess  uint64
 		totalErrors   uint64
 	)
 
@@ -197,11 +196,11 @@ func post(
 		wg.Add(1)
 		go work(i, ctx, client, cfg.URL, responsesDir, cfg.Indent,
 			tasks, resultChan, &wg, log,
-			&totalRequests, &totalSuccess, &totalErrors) // счетчики
+			&totalRequests, &totalErrors) // счетчики
 	}
 
-	bar := progress.New("⏳ ", time.Second, uint64(len(fileDirs)), true, false, true)
-	go bar.Show(ctx, &totalRequests, &totalSuccess, &totalErrors)
+	bar := progress.New(time.Second, "⏳", 50, uint64(len(fileDirs)), true, true)
+	go bar.Show(ctx, &totalRequests, &totalErrors)
 
 	// Ждём окончания смены
 	go func() {
@@ -230,7 +229,7 @@ func work(
 	resultChan chan<- result,
 	wg *sync.WaitGroup,
 	log *logger.Logger,
-	totalRequests, totalSuccess, totalErrors *uint64,
+	totalRequests, totalErrors *uint64,
 ) {
 	defer wg.Done()
 
@@ -322,7 +321,6 @@ func work(
 				statusCode:   statusCode,
 				err:          nil,
 			}
-			atomic.AddUint64(totalSuccess, 1)
 		}
 
 		// Обновляем статистику
