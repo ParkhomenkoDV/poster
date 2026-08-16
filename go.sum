@@ -1,4 +1,4 @@
-github.com/ParkhomenkoDV/progress v0.0.0-20260816082235-9355704c4bd7 h1:AeRWV+6pwQmjkFj0mCrQ3aLcykBMGW56ymd/S4apkGo=
-github.com/ParkhomenkoDV/progress v0.0.0-20260816082235-9355704c4bd7/go.mod h1:9lVihMztVdeIJH5I+8nhYdqRY/lpjl5E6JRVcMERUoE=
+github.com/ParkhomenkoDV/progress v1.2.2 h1:uS1GSogayApNppq0q/Kli3xjvxFCbfEpg9pI3CMJd28=
+github.com/ParkhomenkoDV/progress v1.2.2/go.mod h1:9lVihMztVdeIJH5I+8nhYdqRY/lpjl5E6JRVcMERUoE=
 github.com/goccy/go-json v0.10.6 h1:p8HrPJzOakx/mn/bQtjgNjdTcN+/S6FcG2CTtQOrHVU=
 github.com/goccy/go-json v0.10.6/go.mod h1:oq7eo15ShAhp70Anwd5lgX2pLfOS3QCiwU/PULtXL6M=

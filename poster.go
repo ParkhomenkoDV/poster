@@ -183,14 +183,14 @@ func post(
 	}
 	close(tasks) // Закрываем смену
 
-	var wg sync.WaitGroup // Счётчик рабочих
-
 	// Атомарная статистика
 	var (
-		totalRequests uint64
-		totalErrors   uint64
+		totalRequests, totalErrors uint64
+		bar                        = progress.New(time.Second, "⏳", 50, uint64(len(fileDirs)), true, true, false)
 	)
+	cancelBar := bar.Start(context.Background(), &totalRequests, &totalErrors)
 
+	var wg sync.WaitGroup // Счётчик рабочих
 	// Запускаем рабочих
 	for i := 0; i < cfg.Workers; i++ {
 		wg.Add(1)
@@ -198,9 +198,6 @@ func post(
 			tasks, resultChan, &wg, log,
 			&totalRequests, &totalErrors) // счетчики
 	}
-
-	bar := progress.New(time.Second, "⏳", 50, uint64(len(fileDirs)), true, true)
-	go bar.Show(ctx, &totalRequests, &totalErrors)
 
 	// Ждём окончания смены
 	go func() {
@@ -213,6 +210,8 @@ func post(
 	for result := range resultChan {
 		results = append(results, result)
 	}
+
+	cancelBar()
 
 	return results
 }
