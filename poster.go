@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -183,20 +182,15 @@ func post(
 	}
 	close(tasks) // Закрываем смену
 
-	// Атомарная статистика
-	var (
-		totalRequests, totalErrors uint64
-		bar                        = progress.New(time.Second, "⏳", 50, uint64(len(fileDirs)), true, true, false)
-	)
-	cancelBar := bar.Start(context.Background(), &totalRequests, &totalErrors)
+	bar := progress.New(time.Second, "⏳", 50, uint64(len(fileDirs)), true, true, false)
+	cancelBar := bar.Start(context.Background())
 
 	var wg sync.WaitGroup // Счётчик рабочих
 	// Запускаем рабочих
 	for i := 0; i < cfg.Workers; i++ {
 		wg.Add(1)
-		go work(i, ctx, client, cfg.URL, responsesDir, cfg.Indent,
-			tasks, resultChan, &wg, log,
-			&totalRequests, &totalErrors) // счетчики
+		go work(i, ctx, bar, client, cfg.URL, responsesDir, cfg.Indent,
+			tasks, resultChan, &wg, log) // счетчики
 	}
 
 	// Ждём окончания смены
@@ -220,6 +214,7 @@ func post(
 func work(
 	id int,
 	ctx context.Context,
+	bar *progress.Bar,
 	client *http.Client,
 	url string,
 	responsesDir string,
@@ -228,7 +223,6 @@ func work(
 	resultChan chan<- result,
 	wg *sync.WaitGroup,
 	log *logger.Logger,
-	totalRequests, totalErrors *uint64,
 ) {
 	defer wg.Done()
 
@@ -242,8 +236,8 @@ func work(
 				fileName: filepath.Base(fileDir),
 				err:      ctx.Err(),
 			}
-			atomic.AddUint64(totalErrors, 1)
-			atomic.AddUint64(totalRequests, 1)
+			bar.AddError(1)
+			bar.Add(1)
 			continue
 		default:
 		}
@@ -259,8 +253,8 @@ func work(
 				duration: time.Since(startTime),
 				err:      err,
 			}
-			atomic.AddUint64(totalErrors, 1)
-			atomic.AddUint64(totalRequests, 1)
+			bar.AddError(1)
+			bar.Add(1)
 			continue
 		}
 
@@ -274,8 +268,8 @@ func work(
 				err:         fmt.Errorf("invalid JSON"),
 				statusCode:  0,
 			}
-			atomic.AddUint64(totalErrors, 1)
-			atomic.AddUint64(totalRequests, 1)
+			bar.AddError(1)
+			bar.Add(1)
 			continue
 		}
 
@@ -291,8 +285,8 @@ func work(
 				statusCode:   statusCode,
 				err:          fmt.Errorf("отправка: %v", err),
 			}
-			atomic.AddUint64(totalErrors, 1)
-			atomic.AddUint64(totalRequests, 1)
+			bar.AddError(1)
+			bar.Add(1)
 			continue
 		}
 
@@ -309,7 +303,7 @@ func work(
 				statusCode:   statusCode,
 				err:          fmt.Errorf("saving response: %v", err),
 			}
-			atomic.AddUint64(totalErrors, 1)
+			bar.AddError(1)
 		} else {
 			resultChan <- result{
 				fileName:     fileName,
@@ -323,7 +317,7 @@ func work(
 		}
 
 		// Обновляем статистику
-		atomic.AddUint64(totalRequests, 1)
+		bar.Add(1)
 	}
 }
 

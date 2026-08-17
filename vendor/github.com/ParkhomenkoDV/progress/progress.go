@@ -16,6 +16,8 @@ type Bar struct {
 	Description string        // Описание
 	Length      uint8         // Длина окна (0 - не отображать)
 	Total       uint64        // Общее количество единиц работы (0 – неизвестно)
+	done        uint64        // Количетсво готовых задач
+	errs        uint64        // Количество ошибок
 	ShowETA     bool          // Показывать оценочное время до завершения
 	ShowSpeed   bool          // Показывать скорость обработки (шт/сек)
 	Leave       bool          // Оставить прогресс после завершения
@@ -33,15 +35,27 @@ func New(
 		Description: description,
 		Length:      length,
 		Total:       total,
+		done:        0,
+		errs:        0,
 		ShowETA:     showETA,
 		ShowSpeed:   showSpeed,
 		Leave:       leave,
 	}
 }
 
+// Add увеличивает счётчик обработанных элементов на delta.
+func (b *Bar) Add(delta uint64) {
+	atomic.AddUint64(&b.done, delta)
+}
+
+// AddError увеличивает счётчик ошибок на delta.
+func (b *Bar) AddError(delta uint64) {
+	atomic.AddUint64(&b.errs, delta)
+}
+
 // Start запускает прогресс-бар в фоне.
 // Возвращает функцию stop, которую нужно вызвать по окончании работы.
-func (b *Bar) Start(ctx context.Context, done, errors *uint64) (stop func()) {
+func (b *Bar) Start(ctx context.Context) (stop func()) {
 	ctx, cancel := context.WithCancel(ctx) // контекст отмены
 
 	var wg sync.WaitGroup // ждун
@@ -49,7 +63,7 @@ func (b *Bar) Start(ctx context.Context, done, errors *uint64) (stop func()) {
 
 	go func() {
 		defer wg.Done()
-		b.Show(ctx, done, errors)
+		b.Show(ctx)
 	}()
 
 	return func() {
@@ -59,23 +73,19 @@ func (b *Bar) Start(ctx context.Context, done, errors *uint64) (stop func()) {
 }
 
 // Show запускает периодический вывод прогресса выполнения.
-// Параметры:
-//   - ctx    – контекст для управления завершением.
-//   - done   – указатель на атомарный счётчик обработанных элементов (не должен быть nil).
-//   - errors – указатель на атомарный счётчик ошибок (может быть nil, тогда ошибки не выводятся).
-func (b *Bar) Show(ctx context.Context, done, errors *uint64) {
+func (b *Bar) Show(ctx context.Context) {
 	ticker := time.NewTicker(b.Interval)
 	defer ticker.Stop()
 
-	prevDone := atomic.LoadUint64(done)
+	prevDone := atomic.LoadUint64(&b.done)
 	prevTime := time.Now()
 
 	defer func() {
 		if !b.Leave {
 			fmt.Fprint(os.Stdout, "\033[2K\r") // стираем строку
 		} else {
-			b.print(done, errors, prevDone, prevTime) // выводим заполненный прогресс
-			fmt.Fprint(os.Stdout, "\n")               // переходим на новую строку
+			b.print(atomic.LoadUint64(&b.done), time.Now()) // выводим заполненный прогресс
+			fmt.Fprint(os.Stdout, "\n")                     // переходим на новую строку
 		}
 	}()
 
@@ -85,18 +95,19 @@ func (b *Bar) Show(ctx context.Context, done, errors *uint64) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			b.print(done, errors, prevDone, prevTime)
+			b.print(prevDone, prevTime)
 			// обновляем предыдущие значения после вывода
-			prevDone = atomic.LoadUint64(done)
+			prevDone = atomic.LoadUint64(&b.done)
 			prevTime = time.Now()
 		}
 	}
 }
 
 // print формирует и выводит строку прогресса.
-func (b *Bar) print(done, errors *uint64, prevDone uint64, prevTime time.Time) {
+func (b *Bar) print(prevDone uint64, prevTime time.Time) {
 	now := time.Now()
-	dn := atomic.LoadUint64(done)
+	dn := atomic.LoadUint64(&b.done)
+	err := atomic.LoadUint64(&b.errs)
 
 	// Очищаем текущую строку перед выводом, чтобы избежать артефактов.
 	var line string = fmt.Sprintf("\033[2K\r%s ", b.Description)
@@ -109,8 +120,8 @@ func (b *Bar) print(done, errors *uint64, prevDone uint64, prevTime time.Time) {
 	}
 
 	// Счётчик ошибок
-	if errors != nil {
-		line += fmt.Sprintf("❌ %d ", atomic.LoadUint64(errors))
+	if err != 0 {
+		line += fmt.Sprintf("❌ %d ", err)
 	}
 
 	// ETA (оценочное время до завершения)

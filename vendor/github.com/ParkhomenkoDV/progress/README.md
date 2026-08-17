@@ -14,7 +14,7 @@ go get github.com/ParkhomenkoDV/progress
 
 | Поле         | Тип             | Описание                                                |
 |--------------|-----------------|---------------------------------------------------------|
-| `Interval`   | `time.Duration` | Частота обновления (например, `500*time.Millisecond`).  |
+| `Interval`   | `time.Duration` | Частота обновления.                                     |
 | `Description`| `string`        | Текст, выводимый перед прогресс-баром.                  |
 | `Length`     | `uint8`         | Длина шкалы в символах (0 – не отображать).             |
 | `Total`      | `uint64`        | Общее количество единиц работы (0 – неизвестно).        |
@@ -36,16 +36,17 @@ import (
 
 func main() {
     var (
-        done, errors uint64 // атомарные счетчики
         bar = progress.New(1*time.Second, "Loading", 50, 100, true, true, true)
     ) 
-    defer bar.Start(context.Background(), &done, &errors)()
+    defer bar.Start(context.Background())()
 
+    // Симуляция работы
     go func() {
-        // Симуляция работы
-        for i := 0; i < 100; i++ {
-            atomic.AddUint64(&done, 1)
-            time.Sleep(100 * time.Millisecond)
+        for i := 0; i < 1000; i++ {
+            bar.Add(1)
+            if err := doWork(); err != nil {
+                bar.AddError(1)
+            }
         }
     }()
 }
@@ -65,7 +66,6 @@ import (
 
 func main() {
     var (
-        done, errors uint64 // атомарные счетчики
         wgBar         sync.WaitGroup // ждун
         bar = progress.New(
             500*time.Millisecond, // интервал обновления
@@ -81,13 +81,13 @@ func main() {
     wgBar.Add(1) 
     go func() {
         defer wgBar.Done()
-        bar.Show(ctxBar, &total, &totalErrors)
+        bar.Show(ctxBar)
     }()
 
     go func() {
         // Симуляция работы
         for i := 0; i < 100; i++ {
-            atomic.AddUint64(&done, 1)
+            bar.Add(1)
             time.Sleep(100 * time.Millisecond)
         }
     }()
@@ -101,6 +101,18 @@ func main() {
 
 ```
 Loading 100% |-------   | 69/100 ❌ 0 ⏰ 0h3m15s ⚡️ 100.0 it/s 
+```
+
+## Benchmarks
+```
+goos: darwin
+goarch: arm64
+pkg: github.com/ParkhomenkoDV/progress
+cpu: Apple M4
+BenchmarkAdd-10                 40353370                33.38 ns/op            0 B/op          0 allocs/op
+BenchmarkAddError-10            34805770                35.08 ns/op            0 B/op          0 allocs/op
+BenchmarkGetLoad-10             42778970                26.70 ns/op           64 B/op          1 allocs/op
+BenchmarkFormatDuration-10       9809126               122.1 ns/op            48 B/op          6 allocs/op
 ```
 
 ## License
