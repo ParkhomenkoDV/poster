@@ -182,7 +182,7 @@ func post(
 	}
 	close(tasks) // Закрываем смену
 
-	bar := progress.New(time.Second, "⏳", 50, uint64(len(fileDirs)), true, true, false)
+	bar := progress.New(time.Second, "✉️ POST:", 50, uint64(len(fileDirs)), true, true, false)
 	cancelBar := bar.Start(context.Background())
 
 	var wg sync.WaitGroup // Счётчик рабочих
